@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Serpent Isles — 3D Snakes &amp; Ladders | Local Multiplayer</title>
+    <meta
+      name="description"
+      content="Serpent Isles is a cinematic 3D Snakes & Ladders board game for 2–4 local players. Jeweled serpents, golden sky-ladders, and a floating island arena — free, no sign-up."
+    />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="theme-color" content="#0b1035" />
+  </head>
+  <body>
+    <canvas id="scene" aria-label="3D Snakes and Ladders island arena"></canvas>
+    <canvas id="confetti" aria-hidden="true"></canvas>
+
+    <!-- Loading veil -->
+    <div id="loader" role="status" aria-live="polite">
+      <div class="loader-sigil">🐍</div>
+      <p>Conjuring the isles…</p>
+      <div class="loader-bar"><span></span></div>
+    </div>
+
+    <!-- Top bar HUD -->
+    <header id="topbar" class="hidden">
+      <div class="brand">
+        <span class="brand-mark">🐍</span>
+        <span class="brand-text">Serpent <em>Isles</em></span>
+      </div>
+      <div id="turn-pill" aria-live="polite">
+        <span id="turn-dot"></span>
+        <span id="turn-label">Waiting…</span>
+      </div>
+      <nav class="top-actions" aria-label="Game controls">
+        <div class="seg" role="group" aria-label="Camera view">
+          <button data-cam="cine" title="Cinematic orbit">🎬</button>
+          <button data-cam="follow" class="on" title="Follow active player">🎯</button>
+          <button data-cam="top" title="Top-down view">🗺️</button>
+          <button data-cam="free" title="Free orbit (drag to look)">🕹️</button>
+        </div>
+        <button id="btn-sound" class="icon-btn on" title="Toggle sound">🔊</button>
+        <button id="btn-help" class="icon-btn" title="How to play">?</button>
+        <button id="btn-restart" class="icon-btn" title="Restart match">↺</button>
+      </nav>
+    </header>
+
+    <!-- Player cards -->
+    <aside id="players" class="hidden" aria-label="Players"></aside>
+
+    <!-- Dice dock -->
+    <div id="dice-dock" class="hidden">
+      <div id="dice-face" aria-hidden="true"><span></span></div>
+      <button id="btn-roll" class="roll-btn">
+        <span class="roll-label">ROLL DICE</span>
+        <span class="roll-hint">or press Space</span>
+      </button>
+    </div>
+
+    <!-- Event log -->
+    <aside id="logwrap" class="hidden" aria-label="Match feed">
+      <ol id="log"></ol>
+    </aside>
+
+    <div id="toasts" aria-live="polite"></div>
+
+    <!-- Setup screen -->
+    <div id="setup" class="overlay">
+      <div class="panel setup-panel">
+        <p class="kicker">A cinematic local-multiplayer voyage · 2–4 players · one screen</p>
+        <h1>Serpent <span>Isles</span></h1>
+        <p class="sub">
+          Race across a floating island arena. Climb golden sky-ladders, dodge jeweled serpents,
+          and claim the crown on square <strong>100</strong>. Pass-and-play with friends — no sign-up, ever.
+        </p>
+
+        <div class="setup-grid">
+          <section>
+            <h2>Crew</h2>
+            <div class="count-row" role="group" aria-label="Player count">
+              <button data-count="2" class="on">2</button>
+              <button data-count="3">3</button>
+              <button data-count="4">4</button>
+            </div>
+            <div id="names"></div>
+          </section>
+          <section>
+            <h2>House rules</h2>
+            <label class="rule"><input type="checkbox" id="rule-exact" checked /><span><strong>Exact finish</strong><small>Must land on 100 precisely — overshoots wait.</small></span></label>
+            <label class="rule"><input type="checkbox" id="rule-six" checked /><span><strong>Bonus roll on 6</strong><small>Rolling 6 grants another turn. Third straight 6 skips.</small></span></label>
+            <label class="rule"><input type="checkbox" id="rule-start" /><span><strong>Begin on 6</strong><small>Tokens set sail only after rolling a 6.</small></span></label>
+            <div class="legend">
+              <span><i class="dot gold"></i>Sky-ladder</span>
+              <span><i class="dot red"></i>Serpent</span>
+              <span><i class="dot teal"></i>Crown = 100</span>
+            </div>
+          </section>
+        </div>
+
+        <button id="btn-start" class="cta">⚓ &nbsp;Set Sail — Start Match</button>
+        <p class="fine">🖱️ Drag to orbit · scroll to zoom · <kbd>Space</kbd> rolls · 100% local, files never leave your device</p>
+      </div>
+    </div>
+
+    <!-- Win screen -->
+    <div id="win" class="overlay hidden">
+      <div class="panel win-panel">
+        <p class="kicker">👑 Victory</p>
+        <h2 id="win-title">Ruby claims the crown!</h2>
+        <div id="win-stats"></div>
+        <div class="win-row">
+          <button id="btn-rematch" class="cta">⚔️ Rematch</button>
+          <button id="btn-change" class="ghost">Change crew</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help -->
+    <div id="help" class="overlay hidden">
+      <div class="panel help-panel">
+        <h2>How to play</h2>
+        <ol>
+          <li>Youngest explorer rolls first — then pass the device clockwise.</li>
+          <li>Tap <strong>Roll Dice</strong> (or <kbd>Space</kbd>). Your champion hops square by square.</li>
+          <li>Land on a <strong class="gold-t">gold ring</strong> to climb a sky-ladder. Land on a <strong class="red-t">red ring</strong> and a serpent drags you down.</li>
+          <li>Rolling a <strong>6</strong> grants a bonus roll — but three 6s in a row skips your move.</li>
+          <li>First to square <strong>100</strong> takes the crown. Exact roll required (if enabled).</li>
+        </ol>
+        <button id="btn-close-help" class="cta">Got it — back to the isles</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

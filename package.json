@@ -1,0 +1,21 @@
+{
+  "name": "serpent-isles-3d",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Serpent Isles — premium cinematic 3D Snakes & Ladders for 2–4 local players",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "test": "echo \"no tests yet\""
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3"
+  }
+}
