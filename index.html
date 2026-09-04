@@ -13,7 +13,10 @@
   </head>
   <body>
     <canvas id="scene" aria-label="3D Snakes and Ladders island arena"></canvas>
+    <div id="vignette" aria-hidden="true"></div>
+    <div id="grain" aria-hidden="true"></div>
     <canvas id="confetti" aria-hidden="true"></canvas>
+    <div id="sr-live" class="sr-only" aria-live="polite"></div>
 
     <!-- Loading veil -->
     <div id="loader" role="status" aria-live="polite">
@@ -31,6 +34,9 @@
       <div id="turn-pill" aria-live="polite">
         <span id="turn-dot"></span>
         <span id="turn-label">Waiting…</span>
+      </div>
+      <div id="match-meta" title="Round and elapsed match time">
+        <span id="round">Round 1</span><span class="sep">·</span><span id="clock">00:00</span>
       </div>
       <nav class="top-actions" aria-label="Game controls">
         <div class="seg" role="group" aria-label="Camera view">
@@ -50,12 +56,24 @@
 
     <!-- Dice dock -->
     <div id="dice-dock" class="hidden">
-      <div id="dice-face" aria-hidden="true"><span></span></div>
+      <div class="dock-col">
+        <div id="dice-face" aria-hidden="true"><span></span></div>
+        <div id="dice-hist" title="Recent rolls" aria-hidden="true"></div>
+      </div>
       <button id="btn-roll" class="roll-btn">
         <span class="roll-label">ROLL DICE</span>
         <span class="roll-hint">or press Space</span>
       </button>
     </div>
+    <div id="hint" class="hidden">👆 Tap <strong>ROLL DICE</strong> to set sail!</div>
+
+    <!-- Race tracker -->
+    <div id="race" class="hidden" aria-label="Race progress">
+      <div id="race-track"><div id="race-flag">🏁</div></div>
+      <div id="race-legend"><span>🟡 ladder</span><span>🔴 serpent</span><span>👑 100</span></div>
+    </div>
+
+    <div id="hover-chip" class="hidden"></div>
 
     <!-- Event log -->
     <aside id="logwrap" class="hidden" aria-label="Match feed">
@@ -125,6 +143,8 @@
           <li>Land on a <strong class="gold-t">gold ring</strong> to climb a sky-ladder. Land on a <strong class="red-t">red ring</strong> and a serpent drags you down.</li>
           <li>Rolling a <strong>6</strong> grants a bonus roll — but three 6s in a row skips your move.</li>
           <li>First to square <strong>100</strong> takes the crown. Exact roll required (if enabled).</li>
+          <li><strong>Hover any tile</strong> to peek at its fate. Watch the race tracker at the bottom.</li>
+          <li>Shortcuts: <kbd>Space</kbd> roll · <kbd>C</kbd> camera · <kbd>M</kbd> mute · <kbd>H</kbd> help · <kbd>Esc</kbd> close.</li>
         </ol>
         <button id="btn-close-help" class="cta">Got it — back to the isles</button>
       </div>

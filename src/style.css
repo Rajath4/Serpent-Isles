@@ -255,7 +255,96 @@ body {
 /* Focus visibility */
 button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+/* Cinematic overlays */
+#vignette {
+  position: fixed; inset: 0; z-index: 5; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(4, 2, 14, 0.42) 100%),
+    linear-gradient(180deg, rgba(4, 2, 14, 0.25) 0%, transparent 18%, transparent 82%, rgba(4, 2, 14, 0.35) 100%);
+}
+#grain {
+  position: fixed; inset: 0; z-index: 6; pointer-events: none; opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Match meta chip */
+#match-meta {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: var(--muted);
+  padding: 7px 12px; border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+#match-meta .sep { opacity: 0.5; }
+
+/* Dice dock extras */
+.dock-col { display: flex; align-items: center; gap: 10px; }
+#dice-hist { display: flex; flex-direction: column-reverse; gap: 4px; max-height: 66px; overflow: hidden; }
+#dice-hist b {
+  width: 22px; height: 22px; border-radius: 7px; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(243,207,122,0.3); color: var(--gold);
+  animation: slidein 0.3s ease;
+}
+.roll-btn.attention { animation: glowpulse 1.6s ease-in-out infinite; }
+@keyframes glowpulse {
+  0%, 100% { box-shadow: 0 8px 26px rgba(243,207,122,0.35); }
+  50% { box-shadow: 0 8px 38px rgba(243,207,122,0.75); transform: translateY(-1px); }
+}
+#hint {
+  position: fixed; right: 16px; bottom: 108px; z-index: 21;
+  padding: 10px 16px; border-radius: 14px; font-size: 13px; font-weight: 700;
+  background: rgba(10,8,26,0.9); border: 1px solid var(--gold);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  animation: bob 1.6s ease-in-out infinite;
+}
+
+/* Race tracker */
+#race {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 19;
+  width: min(430px, 42vw);
+  padding: 10px 16px 8px; border-radius: 16px;
+  background: var(--glass); border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(12px);
+}
+#race-track { position: relative; height: 22px; border-radius: 999px;
+  background: linear-gradient(90deg, #2a4a5c, #3b5bbf 55%, #b8892e);
+  border: 1px solid rgba(255,255,255,0.14); }
+#race-flag { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); font-size: 14px; }
+.race-dot {
+  position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--pc, #fff); border: 2px solid rgba(0,0,0,0.55);
+  box-shadow: 0 0 10px var(--pc, #fff);
+  transition: left 0.8s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+.race-dot.leader::after { content: "👑"; position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 11px; }
+#race-legend { display: flex; justify-content: center; gap: 12px; font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+/* Hover inspector chip */
+#hover-chip {
+  position: fixed; z-index: 30; pointer-events: none;
+  padding: 7px 12px; border-radius: 11px; font-size: 13px; font-weight: 700; white-space: nowrap;
+  background: rgba(8, 6, 22, 0.92); border: 1px solid var(--glass-line);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  transform: translate(14px, 14px);
+}
+#hover-chip .fate-ladder { color: var(--gold); }
+#hover-chip .fate-snake { color: #ff8fa0; }
+#hover-chip .fate-crown { color: #53e9ff; }
+
+/* Player card extras */
+.pcard .meta small.exact { color: var(--gold); font-weight: 800; }
+
 /* Responsive */
+@media (max-width: 1100px) {
+  #race { display: none; }
+}
 @media (max-width: 860px) {
   .setup-grid { grid-template-columns: 1fr; }
   #players { top: auto; bottom: 108px; left: 10px; width: 170px; }
@@ -263,7 +352,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
   #logwrap { display: none; }
   #turn-pill { font-size: 12px; max-width: 34vw; }
   .brand-text { display: none; }
+  #match-meta { display: none; }
   #dice-dock { left: 10px; right: 10px; justify-content: space-between; }
+  #hint { right: 12px; left: 12px; bottom: 118px; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

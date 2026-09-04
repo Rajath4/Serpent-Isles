@@ -8,6 +8,8 @@ import { buildLadders, type LadderHandles } from './ladders';
 import { buildTokens, type TokenHandles } from './tokens';
 import { buildDice, type DiceHandles } from './dice';
 import { SoundBank } from './audio';
+import { Effects } from './effects';
+import { makeGlowTexture } from './environment';
 import {
   PLAYER_DEFS, SNAKES, LADDERS, DEFAULT_RULES,
   TOP_Y, easeInOut, type PlayerDef, type Rules,
@@ -32,7 +34,14 @@ interface Callbacks {
   onLog: (msg: string, kind: 'info' | 'good' | 'bad' | 'roll') => void;
   onWin: (winner: PlayerState, stats: { turns: number }) => void;
   onLock: (locked: boolean) => void;
+  onProgress: () => void;
+  onHover: (square: number | null, x?: number, y?: number) => void;
 }
+
+export const REDUCED_MOTION =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 interface Tween {
   t: number;
@@ -58,6 +67,16 @@ export class Game {
   private tokens!: TokenHandles;
   private dice: DiceHandles;
   private env: { update: (t: number, dt: number) => void };
+  private fx: Effects;
+  private marker: THREE.Group;
+  private markerGlow: THREE.Sprite;
+  private tiles: THREE.Object3D[] = [];
+  private raycaster = new THREE.Raycaster();
+  private pointerNdc = new THREE.Vector2();
+  private pointerClient = { x: 0, y: 0 };
+  private pointerOnBoard = false;
+  private dragging = false;
+  private hovered: number | null = null;
   private sound: SoundBank;
   private cb: Callbacks;
 
@@ -91,7 +110,7 @@ export class Game {
     this.controls.minDistance = 5;
     this.controls.maxDistance = 60;
     this.controls.target.set(0, 0.4, 0);
-    this.controls.autoRotate = true;
+    this.controls.autoRotate = !REDUCED_MOTION;
     this.controls.autoRotateSpeed = 0.5;
 
     this.env = buildEnvironment(this.scene);
@@ -100,6 +119,53 @@ export class Game {
     this.ladders = buildLadders(this.scene);
     this.tokens = buildTokens(this.scene, PLAYER_DEFS);
     this.dice = buildDice(this.scene, () => this.sound.diceLand());
+    this.fx = new Effects(this.scene);
+
+    // collect tile meshes for hover raycasts
+    this.board.group.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && o.userData.square) this.tiles.push(o);
+    });
+
+    // floating turn marker — a golden compass diamond over the active champion
+    this.marker = new THREE.Group();
+    const gem = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.17),
+      new THREE.MeshStandardMaterial({ color: 0xffd76e, emissive: 0xcc8a00, emissiveIntensity: 1.8, metalness: 0.9, roughness: 0.2 }),
+    );
+    this.marker.add(gem);
+    this.markerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeGlowTexture(), color: 0xffd76e, transparent: true, opacity: 0.75,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.markerGlow.scale.set(0.9, 0.9, 1);
+    this.marker.add(this.markerGlow);
+    this.marker.visible = false;
+    this.scene.add(this.marker);
+
+    // hover inspector input
+    canvas.addEventListener('pointermove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      this.pointerNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      this.pointerClient = { x: e.clientX, y: e.clientY };
+      this.pointerOnBoard = true;
+    });
+    canvas.addEventListener('pointerleave', () => {
+      this.pointerOnBoard = false;
+      if (this.hovered !== null) {
+        this.hovered = null;
+        this.cb.onHover(null);
+      }
+    });
+    canvas.addEventListener('pointerdown', () => {
+      this.dragging = true;
+      if (this.hovered !== null) {
+        this.hovered = null;
+        this.cb.onHover(null);
+      }
+    });
+    window.addEventListener('pointerup', () => {
+      this.dragging = false;
+    });
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -145,6 +211,35 @@ export class Game {
       this.ladders.update(t, dt);
       this.dice.update(t, dt);
       this.tokens.update(t, dt);
+      this.fx.update(dt);
+      // turn marker rides above the active champion
+      if (this.players.length) {
+        const p = this.players[this.current];
+        const obj = this.tokens.objects.get(p.def.id);
+        if (obj?.visible) {
+          this.marker.visible = true;
+          const bob = REDUCED_MOTION ? 0 : Math.sin(t * 3) * 0.12;
+          this.marker.position.set(obj.position.x, obj.position.y + 1.75 + bob, obj.position.z);
+          this.marker.rotation.y += REDUCED_MOTION ? 0 : dt * 2.4;
+          (this.markerGlow.material as THREE.SpriteMaterial).color.setHex(p.def.color);
+        } else {
+          this.marker.visible = false;
+        }
+      } else {
+        this.marker.visible = false;
+      }
+      // hover inspector
+      if (this.pointerOnBoard && !this.dragging && this.tiles.length) {
+        this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+        const hits = this.raycaster.intersectObjects(this.tiles, false);
+        const sq = hits.length ? (hits[0].object.userData.square as number) : null;
+        if (sq !== this.hovered) {
+          this.hovered = sq;
+          this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
+        } else if (sq !== null) {
+          this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
+        }
+      }
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     };
@@ -184,14 +279,16 @@ export class Game {
     });
     this.tokens.setActive(this.players[0].def.id);
     this.setCameraMode('follow');
+    this.board.pulse(1);
     this.cb.onTurn(this.players[0], 0);
+    this.cb.onProgress();
     this.cb.onLog(`⚔️ ${this.players.map((p) => p.name).join(' vs ')} — may the best explorer win!`, 'info');
     this.sound.turn();
   }
 
   setCameraMode(m: CameraMode) {
     this.cameraMode = m;
-    this.controls.autoRotate = m === 'cine';
+    this.controls.autoRotate = m === 'cine' && !REDUCED_MOTION;
     if (m === 'cine') this.flyTo(new THREE.Vector3(11.5, 10, 15.5), new THREE.Vector3(0, 0.2, 0), 1.6);
     else if (m === 'top') this.flyTo(new THREE.Vector3(0, 19, 3.2), new THREE.Vector3(0, 0, 0.4), 1.4);
     else if (m === 'follow') {
@@ -298,15 +395,19 @@ export class Game {
         value === 6 ? `🎲 ${player.name} rolled 6 and marched to ${target}.` : `🎲 ${player.name} rolled ${value} → ${target}.`,
         'roll',
       );
+      this.fx.landPoof(this.tokenObj(player).position.clone().add(new THREE.Vector3(0, 0.15, 0)), player.def.color);
     }
+    this.cb.onProgress();
 
     if (value === 6 && this.rules.extraOnSix) this.sound.six();
 
     // victory
     if (player.square === 100) {
+      this.celebrate(player);
       this.sound.win();
       this.busy = false;
       this.cb.onLock(false);
+      this.cb.onProgress();
       this.cb.onWin(player, { turns: this.turnCount + 1 });
       return;
     }
@@ -324,6 +425,7 @@ export class Game {
     }
     const p = this.players[this.current];
     this.tokens.setActive(p.def.id);
+    this.board.pulse(Math.max(1, p.square), p.def.color);
     if (this.cameraMode === 'follow') {
       const obj = this.tokens.objects.get(p.def.id)!;
       this.flyTo(
@@ -332,6 +434,7 @@ export class Game {
       );
     }
     this.cb.onTurn(p, this.current);
+    this.cb.onProgress();
     this.busy = false;
     this.cb.onLock(false);
     return Promise.resolve();
@@ -358,6 +461,7 @@ export class Game {
         obj.position.y = THREE.MathUtils.lerp(src.y, dest.y, e) + Math.sin(e * Math.PI) * 0.55;
       });
       obj.position.copy(dest);
+      this.fx.dust(dest);
       this.board.pulse(s, p.def.color);
     }
   }
@@ -369,6 +473,7 @@ export class Game {
       obj.position.copy(this.tokens.tokenPos(tail, this.slotOf(tail, p.def.id)));
       return;
     }
+    this.fx.snakePoof(obj.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
     const dest = this.tokens.tokenPos(tail, this.slotOf(tail, p.def.id));
     const dur = 1.5;
     await tween(dur, (e) => {
@@ -377,6 +482,8 @@ export class Game {
       obj.position.y = pt.y + 0.25 + Math.sin(e * Math.PI) * 0.15;
     });
     obj.position.copy(dest);
+    this.fx.ring(dest, p.def.color, 1.2, 0.6);
+    this.cb.onProgress();
   }
 
   private async climbAlong(p: PlayerState, foot: number, top: number) {
@@ -387,6 +494,7 @@ export class Game {
       return;
     }
     const dest = this.tokens.tokenPos(top, this.slotOf(top, p.def.id));
+    this.fx.ladderSparkle(obj.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
     await tween(1.5, (e) => {
       const pt = curve.getPoint(e);
       const wobble = Math.sin(e * Math.PI * 6) * 0.05 * (1 - e);
@@ -394,5 +502,25 @@ export class Game {
       if (e > 0.92) obj.position.lerp(dest, (e - 0.92) / 0.08);
     });
     obj.position.copy(dest);
+    this.fx.ladderSparkle(dest.clone().add(new THREE.Vector3(0, 0.4, 0)));
+    this.cb.onProgress();
+  }
+
+  /** Coronation moment: swoop the camera in + fountains of gold over square 100. */
+  celebrate(winner: PlayerState) {
+    const obj = this.tokens.objects.get(winner.def.id);
+    if (!obj) return;
+    this.flyTo(
+      new THREE.Vector3(obj.position.x + 2.8, 3.6, obj.position.z + 4.4),
+      new THREE.Vector3(obj.position.x, 1.0, obj.position.z),
+      1.8,
+    );
+    const at = new THREE.Vector3(obj.position.x, TOP_Y + 0.5, obj.position.z);
+    this.fx.crownFountain(at);
+    this.board.pulse(100, 0xffe1a1);
+    if (!REDUCED_MOTION) {
+      setTimeout(() => this.fx.crownFountain(at), 700);
+      setTimeout(() => this.fx.crownFountain(at), 1500);
+    }
   }
 }

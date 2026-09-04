@@ -2,7 +2,9 @@
 import './style.css';
 import { Game, type PlayerState } from './game/Game';
 import { SoundBank } from './game/audio';
-import { PLAYER_DEFS, type Rules } from './game/constants';
+import { PLAYER_DEFS, SNAKES, LADDERS, type Rules } from './game/constants';
+
+const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -29,6 +31,74 @@ function renderDiceFace(v: number) {
   });
 }
 renderDiceFace(6);
+
+// ── shared HUD helpers ─────────────────────────────────────────────────────
+const hexOf = (id: number) => `#${PLAYER_DEFS[id].color.toString(16).padStart(6, '0')}`;
+let matchStart = Date.now();
+let lastTurnName = '';
+let diceHistory: number[] = [];
+
+function announce(msg: string) {
+  $('sr-live').textContent = msg;
+}
+
+function pushHistory(v: number) {
+  diceHistory.unshift(v);
+  diceHistory = diceHistory.slice(0, 4);
+  const wrap = $('dice-hist');
+  wrap.innerHTML = '';
+  diceHistory.forEach((n) => {
+    const b = document.createElement('b');
+    b.textContent = String(n);
+    wrap.appendChild(b);
+  });
+}
+
+/** Refresh player cards: position, exact-needed hint, leader crown. */
+function updateCards() {
+  const pls = game.players;
+  const best = Math.max(0, ...pls.map((p) => p.square));
+  document.querySelectorAll('.pcard').forEach((card) => {
+    const id = Number(card.getAttribute('data-id'));
+    const pl = pls.find((x) => x.def.id === id);
+    if (!pl) return;
+    const nameEl = card.querySelector('b')!;
+    const posEl = card.querySelector('.pos') as HTMLElement;
+    const leader = pl.square === best && best > 0;
+    nameEl.textContent = `${leader ? '👑 ' : ''}${pl.name}`;
+    posEl.classList.toggle('exact', lastRules.exactFinish && pl.square >= 94 && pl.square < 100);
+    if (pl.square === 0) posEl.textContent = '⛵ at bay';
+    else if (lastRules.exactFinish && pl.square >= 94 && pl.square < 100)
+      posEl.textContent = `🎯 needs exactly ${100 - pl.square}`;
+    else if (pl.square === 100) posEl.textContent = '👑 crowned!';
+    else posEl.textContent = `■ ${pl.square} · ${100 - pl.square} to go`;
+  });
+}
+
+/** Slide the race-tracker dots. */
+function updateRace() {
+  const track = $('race-track');
+  game.players.forEach((p) => {
+    let dot = track.querySelector(`[data-dot="${p.def.id}"]`) as HTMLElement | null;
+    if (!dot) {
+      dot = document.createElement('div');
+      dot.className = 'race-dot';
+      dot.dataset.dot = String(p.def.id);
+      dot.style.setProperty('--pc', hexOf(p.def.id));
+      dot.title = p.name;
+      track.appendChild(dot);
+    }
+    dot.title = `${p.name} — ${p.square}`;
+    dot.style.left = `${3 + (Math.min(100, p.square) / 100) * 90}%`;
+  });
+  const best = Math.max(0, ...game.players.map((p) => p.square));
+  track.querySelectorAll('.race-dot').forEach((d) => {
+    const id = Number((d as HTMLElement).dataset.dot);
+    const pl = game.players.find((x) => x.def.id === id);
+    d.classList.toggle('leader', !!pl && pl.square === best && best > 0);
+  });
+  $('round').textContent = `Round ${game.turnCount + 1}`;
+}
 
 // ── confetti ───────────────────────────────────────────────────────────────
 const confettiCanvas = $('confetti') as unknown as HTMLCanvasElement;
@@ -118,39 +188,92 @@ const game = new Game(canvas, sound, {
     const dot = $('turn-dot');
     dot.style.background = p.def.glow;
     dot.style.color = p.def.glow;
+    $('turn-pill').style.borderColor = p.def.glow;
     document.querySelectorAll('.pcard').forEach((el) => {
       el.classList.toggle('active', el.getAttribute('data-id') === String(p.def.id));
     });
-    document.querySelectorAll('#players .pos').forEach((el) => {
-      const id = Number((el as HTMLElement).dataset.id);
-      const pl = game.players.find((x) => x.def.id === id);
-      if (pl) el.textContent = pl.square === 0 ? '⛵ at bay' : `■ ${pl.square}`;
-    });
+    updateCards();
+    updateRace();
+    announce(`${p.name}'s turn.`);
+    if (lastTurnName && lastTurnName !== p.name) toast(`📲 Pass the isles to ${p.name}`);
+    lastTurnName = p.name;
   },
   onDice: (v: number, p: PlayerState) => {
     renderDiceFace(v);
+    pushHistory(v);
+    $('hint').classList.add('hidden');
+    announce(`${p.name} rolled ${v}.`);
     if (v === 6) toast(`✨ ${p.name} rolled a 6!`);
   },
-  onLog: (msg, kind) => log(msg, kind),
+  onLog: (msg, kind) => {
+    log(msg, kind);
+    if (kind === 'good' || kind === 'bad') announce(msg);
+  },
   onWin: (winner, stats) => {
+    announce(`${winner.name} wins the game!`);
     $('win-title').textContent = `${winner.name} claims the crown!`;
-    const rows = game.players
+    const pls = game.players;
+    const most = (f: (p: PlayerState) => number) => pls.reduce((a, b) => (f(b) > f(a) ? b : a), pls[0]);
+    const rows = pls
       .map(
         (p) => `<div class="stat"><b>${p.square}</b><small>${p.name} · 🎲${p.rolls} 🪜${p.ladders} 🐍${p.snakes}</small></div>`,
       )
       .join('');
-    $('win-stats').innerHTML = rows + `<div class="stat"><b>${stats.turns}</b><small>rounds played</small></div>`;
+    const mvps =
+      `<div class="stat"><b>🪜</b><small>Climber · ${most((p) => p.ladders).name}</small></div>` +
+      `<div class="stat"><b>🐍</b><small>Serpent-charmer · ${most((p) => p.snakes).name}</small></div>` +
+      `<div class="stat"><b>⏱️</b><small>${stats.turns} rounds · ${elapsedStr()}</small></div>`;
+    $('win-stats').innerHTML = rows + mvps;
     setTimeout(() => {
       $('win').classList.remove('hidden');
-      burstConfetti(260);
-      setTimeout(() => burstConfetti(160), 900);
+      if (!REDUCED) {
+        burstConfetti(260);
+        setTimeout(() => burstConfetti(160), 900);
+      }
     }, 900);
     toast(`👑 ${winner.name} wins the Isles!`);
   },
   onLock: (locked: boolean) => {
-    ($('btn-roll') as HTMLButtonElement).disabled = locked;
+    const btn = $('btn-roll') as HTMLButtonElement;
+    btn.disabled = locked;
+    btn.querySelector('.roll-label')!.textContent = locked ? 'ROLLING…' : 'ROLL DICE';
+    btn.classList.toggle('attention', !locked);
+  },
+  onProgress: () => {
+    updateCards();
+    updateRace();
+  },
+  onHover: (sq: number | null, x = 0, y = 0) => {
+    const chip = $('hover-chip');
+    const overlayOpen =
+      !$('setup').classList.contains('hidden') ||
+      !$('win').classList.contains('hidden') ||
+      !$('help').classList.contains('hidden');
+    if (sq === null || overlayOpen) {
+      chip.classList.add('hidden');
+      return;
+    }
+    let fate = '';
+    if (sq === 100) fate = ` <span class="fate-crown">👑 The Crown!</span>`;
+    else if (sq === 1) fate = ` <span class="fate-ladder">★ Start · 🪜 to 38</span>`;
+    else if (LADDERS[sq] !== undefined) fate = ` <span class="fate-ladder">🪜 climbs to ${LADDERS[sq]}</span>`;
+    else if (SNAKES[sq] !== undefined) fate = ` <span class="fate-snake">🐍 slides to ${SNAKES[sq]}</span>`;
+    chip.innerHTML = `■ ${sq}${fate}`;
+    chip.style.left = `${x}px`;
+    chip.style.top = `${y}px`;
+    chip.classList.remove('hidden');
   },
 });
+
+function elapsedStr(): string {
+  const s = Math.floor((Date.now() - matchStart) / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+setInterval(() => {
+  if ($('topbar').classList.contains('hidden')) return;
+  $('clock').textContent = elapsedStr();
+  $('round').textContent = `Round ${game.turnCount + 1}`;
+}, 1000);
 
 // ── setup screen ───────────────────────────────────────────────────────────
 let playerCount = 2;
@@ -197,9 +320,10 @@ function readRules(): Rules {
 function renderPlayerCards(names: string[]) {
   const wrap = $('players');
   wrap.innerHTML = '';
+  $('race-track').querySelectorAll('.race-dot').forEach((d) => d.remove());
   names.forEach((n, i) => {
     const def = PLAYER_DEFS[i];
-    const hex = `#${def.color.toString(16).padStart(6, '0')}`;
+    const hex = hexOf(i);
     const card = document.createElement('div');
     card.className = 'pcard' + (i === 0 ? ' active' : '');
     card.dataset.id = String(def.id);
@@ -211,17 +335,31 @@ function renderPlayerCards(names: string[]) {
   });
 }
 
+function resetMatchChrome() {
+  diceHistory = [];
+  $('dice-hist').innerHTML = '';
+  ($('log') as HTMLElement).innerHTML = '';
+  renderDiceFace(6);
+  matchStart = Date.now();
+  lastTurnName = '';
+  $('clock').textContent = '00:00';
+  $('round').textContent = 'Round 1';
+  $('hint').classList.remove('hidden');
+}
+
 function startMatch(names: string[], rules: Rules) {
   lastNames = [...names];
   lastRules = { ...rules };
   renderPlayerCards(names);
+  resetMatchChrome();
   $('setup').classList.add('hidden');
   $('win').classList.add('hidden');
-  ['topbar', 'players', 'dice-dock', 'logwrap'].forEach((id) => $(id).classList.remove('hidden'));
+  ['topbar', 'players', 'dice-dock', 'logwrap', 'race'].forEach((id) => $(id).classList.remove('hidden'));
   game.resize();
   game.newGame(names, rules);
   ($('btn-roll') as HTMLButtonElement).disabled = false;
-  toast(`⚓ ${names[0]} rolls first — good luck!`);
+  ($('btn-roll') as HTMLButtonElement).classList.add('attention');
+  updateRace();
 }
 
 $('btn-start').addEventListener('click', () => {
@@ -232,22 +370,42 @@ $('btn-start').addEventListener('click', () => {
   startMatch(names, readRules());
 });
 
-// ── dice ───────────────────────────────────────────────────────────────────
+// ── input: dice, shortcuts ───────────────────────────────────────────────────
 function doRoll() {
   sound.unlock();
+  ($('btn-roll') as HTMLButtonElement).classList.remove('attention');
   void game.rollDice();
 }
 $('btn-roll').addEventListener('click', doRoll);
+
+function cycleCamera() {
+  const btns = [...document.querySelectorAll<HTMLElement>('.seg button')];
+  const cur = btns.findIndex((b) => b.classList.contains('on'));
+  btns[(cur + 1) % btns.length].click();
+}
+
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && !$('setup').classList.contains('hidden') === false) {
-    // space on setup starts game
-  }
-  if (e.code === 'Space' && $('setup').classList.contains('hidden') && $('win').classList.contains('hidden') && $('help').classList.contains('hidden')) {
+  const target = e.target as HTMLElement | null;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+  const setupOpen = !$('setup').classList.contains('hidden');
+  const winOpen = !$('win').classList.contains('hidden');
+  const helpOpen = !$('help').classList.contains('hidden');
+  if (e.code === 'Space') {
+    if (setupOpen || winOpen || helpOpen) return;
     e.preventDefault();
     doRoll();
-  }
-  if (e.code === 'Enter' && !$('setup').classList.contains('hidden')) {
+  } else if (e.code === 'Enter' && setupOpen) {
     $('btn-start').click();
+  } else if (e.code === 'KeyC' && !setupOpen) {
+    cycleCamera();
+  } else if (e.code === 'KeyM') {
+    $('btn-sound').click();
+  } else if (e.code === 'KeyH') {
+    sound.click();
+    $('help').classList.toggle('hidden', helpOpen);
+    if (!helpOpen) $('btn-close-help').focus();
+  } else if (e.code === 'Escape' && helpOpen) {
+    $('help').classList.add('hidden');
   }
 });
 
@@ -284,19 +442,23 @@ $('btn-restart').addEventListener('click', () => {
   sound.click();
   if (!lastNames.length) return;
   $('win').classList.add('hidden');
-  game.newGame(lastNames, lastRules);
   renderPlayerCards(lastNames);
-  ($('log') as HTMLElement).innerHTML = '';
+  resetMatchChrome();
+  game.newGame(lastNames, lastRules);
   ($('btn-roll') as HTMLButtonElement).disabled = false;
+  ($('btn-roll') as HTMLButtonElement).classList.add('attention');
+  updateRace();
   toast('↺ New voyage begun!');
 });
 $('btn-rematch').addEventListener('click', () => {
   sound.click();
   $('win').classList.add('hidden');
-  game.newGame(lastNames, lastRules);
   renderPlayerCards(lastNames);
-  ($('log') as HTMLElement).innerHTML = '';
+  resetMatchChrome();
+  game.newGame(lastNames, lastRules);
   ($('btn-roll') as HTMLButtonElement).disabled = false;
+  ($('btn-roll') as HTMLButtonElement).classList.add('attention');
+  updateRace();
 });
 $('btn-change').addEventListener('click', () => {
   sound.click();

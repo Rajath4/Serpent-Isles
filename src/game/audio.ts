@@ -117,7 +117,6 @@ export class SoundBank {
   startAmbient() {
     const ctx = this.ensure();
     if (!ctx || !this.master || this.ambientNodes.length) return;
-    // Gentle ocean-ish filtered noise loop + slow shimmer pad
     const len = ctx.sampleRate * 4;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -137,5 +136,38 @@ export class SoundBank {
     src.connect(f).connect(g).connect(this.master);
     src.start();
     this.ambientNodes.push(src);
+    this.startMusic();
+  }
+
+  /**
+   * Generative music-box: soft pentatonic plucks over a slow bass root.
+   * Whisper-quiet by design; the mute button silences everything.
+   */
+  private musicTimer: number | null = null;
+
+  private startMusic() {
+    if (this.musicTimer !== null) return;
+    const scale = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3];
+    const roots = [130.8, 98.0, 110.0, 146.8];
+    let step = 0;
+    const pluck = () => {
+      if (!this.muted && this.ctx && this.ctx.state === 'running') {
+        // sparse melody — rest every third beat
+        if (step % 3 !== 2) {
+          const f = scale[Math.floor(Math.random() * scale.length)];
+          this.tone(f, 1.6, 'sine', 0.045);
+          this.tone(f * 2, 1.1, 'triangle', 0.018, 0.02);
+          if (Math.random() < 0.3) this.tone(f * 1.5, 1.4, 'sine', 0.03, 0.35);
+        }
+        // root shift every 8 beats
+        if (step % 8 === 0) {
+          const root = roots[(step / 8) % roots.length | 0];
+          this.tone(root, 3.2, 'sine', 0.05);
+          this.tone(root * 1.5, 3.0, 'sine', 0.028, 0.1);
+        }
+        step++;
+      }
+    };
+    this.musicTimer = window.setInterval(pluck, 1500);
   }
 }
