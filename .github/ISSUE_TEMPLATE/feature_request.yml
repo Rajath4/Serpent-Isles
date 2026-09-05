@@ -1,0 +1,22 @@
+name: Feature request
+description: An idea to make the voyage better.
+labels: [enhancement]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary
+      placeholder: e.g. Night-mode island theme
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would players love this?
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: How should it work?
+      description: Rough behavior, edge cases, house-rule interactions.

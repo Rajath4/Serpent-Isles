@@ -3,6 +3,16 @@
   "private": true,
   "version": "1.0.0",
   "description": "Serpent Isles — premium cinematic 3D Snakes & Ladders for 2–4 local players",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rajath4/Serpent-Isles.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Rajath4/Serpent-Isles/issues"
+  },
+  "homepage": "https://rajath4.github.io/Serpent-Isles/",
+  "keywords": ["game", "snakes-and-ladders", "threejs", "board-game", "3d", "offline", "pwa"],
   "type": "module",
   "scripts": {
     "dev": "vite",

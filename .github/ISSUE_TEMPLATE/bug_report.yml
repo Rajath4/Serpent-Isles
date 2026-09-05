@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in the isles misbehaves — tell us so we can fix it.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version / where
+      description: App version (footer of README) or the deployed URL + browser/device.
+      placeholder: e.g. v1.0.0, Chrome 126 on Android, installed PWA
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from a fresh page load.
+      value: |
+        1. Open the game
+        2. Start a match with …
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors (if any)
+      description: Open devtools (F12) → Console, copy any red lines.
+      render: text
