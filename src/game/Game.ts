@@ -120,6 +120,11 @@ export class Game {
   private badWindows = 0;
   private goodWindows = 0;
   private perfCooldown = 0;
+  // — high-refresh presenter: 120Hz+ panels present every 2nd frame —
+  private halfRate = false;
+  private hzWindow = new Float32Array(90);
+  private hzCount = 0;
+  private hzCooldown = 0;
   private sound: SoundBank;
   private cb: Callbacks;
 
@@ -146,7 +151,8 @@ export class Game {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, Q.pixelCap));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // soft shadows are a luxury tax — Eco pays hard PCF, everyone else soft
+    this.renderer.shadowMap.type = Q.tier === 'low' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     // shadows re-render every 2nd frame — a 16ms lag no eye can catch, ~half the cost
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -265,6 +271,7 @@ export class Game {
       requestAnimationFrame(loop);
       const rawDt = Math.min(clock.getDelta(), 0.05);
       this.frame++;
+      this.sampleRefresh(rawDt);
       // on-demand shadows: shadow maps are view-independent, so they only need
       // re-rendering while casters move (action) — plus a twice-a-second
       // catch-up for idle sway (bobbing heads, spinning die, turning crown)
@@ -380,11 +387,40 @@ export class Game {
       // menu budgeting: behind an opaque overlay with nothing in flight,
       // presenting every 2nd frame is invisible — updates keep full rate.
       const idleCovered = !actionActive && this.cb.uiCovered();
-      if (!(idleCovered && (this.frame & 1) === 1)) {
+      const skipPresent = (this.frame & 1) === 1 && (this.halfRate || idleCovered);
+      if (!skipPresent) {
         this.renderer.render(this.scene, this.camera);
       }
     };
     loop();
+  }
+
+  /**
+   * High-refresh presenter: measures real vsync over rolling 90-frame windows.
+   * Panels at ≥110Hz present every 2nd rAF (updates keep full rate, so motion
+   * stays correct) — halving GPU load where pixels were pure overhead.
+   * Hysteresis + cooldown make ProMotion's wandering refresh flap-proof.
+   */
+  private sampleRefresh(rawDt: number) {
+    if (this.hzCooldown > 0) {
+      this.hzCooldown--;
+      return;
+    }
+    if (this.frame < 6) return; // ignore boot chaos
+    this.hzWindow[this.hzCount++] = rawDt;
+    if (this.hzCount < 90) return;
+    this.hzCount = 0;
+    const sorted = Array.from(this.hzWindow).sort((a, b) => a - b);
+    const med = sorted[45];
+    // short cooldown only damps pathological flip-flop; the dead zone above
+    // already makes ProMotion wander flap-proof, so revisits stay responsive
+    if (!this.halfRate && med <= 0.0092) {
+      this.halfRate = true;
+      this.hzCooldown = 8;
+    } else if (this.halfRate && med >= 0.0105) {
+      this.halfRate = false;
+      this.hzCooldown = 8;
+    }
   }
 
   resize() {

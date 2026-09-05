@@ -26,7 +26,7 @@ is **generated procedurally in code**: no downloads, no external models.
 - **⛵ Save/resume** — every turn auto-saves locally; interruptions lose nothing
 - **👑 Hall of Fame** — local legends, dice-fairness proof, fortune favorites
 - **📺 Auto-director camera** — top overview at rest, dice close-ups, action tracking, idle drift, instant manual override
-- **Adaptive performance** — Eco/Balanced/Cinematic tiers auto-detected (geometry, shaders, particles, shadows, AA) + forgiving live governor
+- **Adaptive performance** — Eco/Balanced/Cinematic tiers from real GPU capability (renderer string, cores, memory, pointer) with manual override; 120Hz+ panels get half-rate presentation; forgiving live governor trims only on sustained weakness and climbs back fast
 - **Party UX** — pause menu, haptics, share-victory, pass-the-device toasts, race tracker, match feed, win confetti
 
 ## 🚀 Run it locally

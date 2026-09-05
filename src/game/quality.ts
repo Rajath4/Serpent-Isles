@@ -54,9 +54,33 @@ export function detectQuality(): QualityTier {
     const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 0;
     if (coarse && (cores <= 4 || (mem > 0 && mem <= 4))) return 'low';
     if (!coarse && cores >= 8 && (mem === 0 || mem >= 8)) return 'high';
-    return 'balanced';
+    // fall through to GPU-string evidence below before settling on balanced
   } catch {
     return 'balanced';
+  }
+  const gpu = glRendererName().toLowerCase();
+  // software rasterizers must never carry full detail — instant slideshow
+  // (real ANGLE-on-Metal/Vulkan strings never contain these tokens)
+  if (/swiftshader|llvmpipe|software|basic render|gdi generic/i.test(gpu)) return 'low';
+  // museum-piece mobile GPUs: kindness is low poly
+  if (/mali-t|mali-4|adreno \([34]|adreno [34]|powervr sgx|videocore iv/i.test(gpu)) return 'low';
+  // desktop-class Apple Silicon sails cinematic (mobile Apple stays heuristic — thermals)
+  if (/mac/i.test(navigator.userAgent) && /apple (m[1-9]|a1[6-9])|apple gpu/i.test(gpu)) return 'high';
+  return 'balanced';
+}
+
+/** Read the real GPU string, then release the probe context immediately. */
+function glRendererName(): string {
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return '';
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return name;
+  } catch {
+    return '';
   }
 }
 
