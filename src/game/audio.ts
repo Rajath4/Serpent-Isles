@@ -87,6 +87,13 @@ export class SoundBank {
     this.tone(320, 0.1, 'triangle', 0.18, 0, 210);
   }
 
+  /** Velvet bounce tick — strength 0..1 scales the knock. */
+  bounce(strength = 1) {
+    const s = Math.max(0.05, Math.min(1, strength));
+    this.noise(0.05, 0.15 * s, 0, 2600);
+    this.tone(210 + Math.random() * 120, 0.07, 'triangle', 0.12 * s, 0, 160);
+  }
+
   hop(step: number) {
     const base = 420 + (step % 8) * 45;
     this.tone(base, 0.11, 'triangle', 0.2, 0, base * 1.5);

@@ -14,7 +14,7 @@ import { Effects } from './effects';
 import { makeGlowTexture } from './environment';
 import {
   PLAYER_DEFS, SNAKES, LADDERS, DEFAULT_RULES,
-  TOP_Y, easeInOut, type PlayerDef, type Rules,
+  TOP_Y, easeInOut, smoother, type PlayerDef, type Rules,
 } from './constants';
 
 export interface PlayerState {
@@ -134,7 +134,16 @@ export class Game {
     this.snakes = buildSnakes(this.scene);
     this.ladders = buildLadders(this.scene);
     this.tokens = buildTokens(this.scene, PLAYER_DEFS);
-    this.dice = buildDice(this.scene, () => this.sound.diceLand());
+    this.dice = buildDice(
+      this.scene,
+      () => this.sound.diceLand(),
+      (s) => this.sound.bounce(s),
+      (pos) => this.fx.burst(pos, { color: 0xffd76e, count: 2, speed: 0.7, up: 0.5, life: 0.45, size: 0.22, gravity: 0.6 }),
+      (pos) => {
+        this.fx.ring(pos, 0xffd76e, 1.7, 0.7);
+        this.fx.burst(pos, { color: 0xffe1a1, count: 18, speed: 2.4, up: 2.6, life: 0.7, size: 0.3 });
+      },
+    );
     this.fx = new Effects(this.scene);
 
     // collect tile meshes for hover raycasts
@@ -214,15 +223,17 @@ export class Game {
       if (this.camTween) {
         const c = this.camTween;
         c.t += dt;
-        const k = easeInOut(Math.min(1, c.t / c.dur));
+        // smootherstep: no velocity or acceleration jumps at either end — no whip
+        const k = smoother(Math.min(1, c.t / c.dur));
         this.camera.position.lerpVectors(c.p0, c.p1, k);
         this.controls.target.lerpVectors(c.t0, c.t1, k);
         if (c.t >= c.dur) this.camTween = null;
       } else if (this.director && this.trackFn) {
-        // action tracking shot — glued to the moving champion
+        // action tracking shot — exponential ease, critically damped: it can
+        // lag behind the action but never overshoot, so no seasickness
         const anchor = this.trackFn();
-        this.camera.position.lerp(anchor.clone().add(this.trackOff), 1 - Math.pow(0.004, dt));
-        this.controls.target.lerp(anchor.clone().add(new THREE.Vector3(0, 0.5, 0)), 1 - Math.pow(0.002, dt));
+        this.camera.position.lerp(anchor.clone().add(this.trackOff), 1 - Math.exp(-dt / 0.32));
+        this.controls.target.lerp(anchor.clone().add(new THREE.Vector3(0, 0.5, 0)), 1 - Math.exp(-dt / 0.5));
       } else if (!this.director && this.cameraMode === 'follow' && this.players.length) {
         const p = this.players[this.current];
         const obj = this.tokens.objects.get(p.def.id);
@@ -352,10 +363,10 @@ export class Game {
     this.flyTo(new THREE.Vector3(0, 16.5 * s, 8.5 * s), new THREE.Vector3(0.8, 0, 1.2), 1.5);
   }
 
-  /** Dice close-up over the velvet pad. */
+  /** Dice close-up over the velvet pad — a gentle 1s glide, never a whip. */
   private frameDice() {
     this.trackFn = null;
-    this.flyTo(new THREE.Vector3(5.6, 4.8, 13.0), new THREE.Vector3(8.8, 0.5, 8.2), 0.8);
+    this.flyTo(new THREE.Vector3(5.6, 4.8, 13.0), new THREE.Vector3(8.8, 0.5, 8.2), 1.0);
   }
 
   private flyTo(pos: THREE.Vector3, tgt: THREE.Vector3, dur: number) {

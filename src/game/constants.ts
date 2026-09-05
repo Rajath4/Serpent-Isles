@@ -91,6 +91,8 @@ export function stackOffset(slot: number): { dx: number; dz: number } {
 
 export const easeInOut = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+/** Smootherstep: zero velocity AND acceleration at both ends — for cameras. */
+export const smoother = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
 export const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 export const easeOutBack = (t: number) => {
   const c = 1.70158;
