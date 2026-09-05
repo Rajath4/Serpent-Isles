@@ -378,6 +378,76 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
 #hover-chip .fate-snake { color: #ff8fa0; }
 #hover-chip .fate-crown { color: #53e9ff; }
 
+/* Voyage mode + crew controls */
+.setup-grid h2.mt { margin-top: 14px; }
+.tiny-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.mode-row { display: flex; gap: 8px; }
+.mode-row button {
+  flex: 1; padding: 10px 12px; border-radius: 12px; cursor: pointer; text-align: left;
+  border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: var(--ink);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.mode-row button strong { font-size: 14px; }
+.mode-row button small { color: var(--muted); font-size: 11px; }
+.mode-row button.on { background: rgba(243,207,122,0.22); border-color: var(--gold); }
+.name-row .cpu-toggle {
+  border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.06);
+  width: 40px; height: 40px; border-radius: 12px; font-size: 17px; cursor: pointer; flex: none;
+}
+.name-row .cpu-toggle.on { background: rgba(47,184,255,0.22); border-color: #2fb8ff; }
+.name-row input:disabled { opacity: 0.55; }
+
+/* Resume + Hall of Fame */
+#btn-resume { margin-bottom: 16px; }
+#hof { margin-bottom: 18px; padding: 14px 16px; border-radius: var(--radius);
+  background: rgba(243,207,122,0.07); border: 1px solid var(--glass-line); }
+#hof h2 { font-size: 13px; font-family: var(--font); text-transform: uppercase;
+  letter-spacing: 0.18em; color: var(--gold); margin: 0 0 10px; }
+#hof-list { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.hof-chip {
+  display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); font-size: 13px;
+}
+.hof-chip b { color: var(--gold); }
+.hof-chip small { color: var(--muted); }
+
+/* CPU badge on cards */
+.pcard.cpu .avatar { font-size: 18px; }
+.pcard .cputag {
+  font-size: 10px; font-weight: 800; color: #9be7ff; border: 1px solid rgba(47,184,255,0.5);
+  border-radius: 6px; padding: 0 5px; margin-left: 6px; vertical-align: 1px;
+}
+
+/* Reactions */
+#reacts {
+  position: fixed; right: 14px; bottom: 118px; z-index: 21;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px; border-radius: 16px;
+  background: var(--glass); border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(12px);
+}
+#reacts button {
+  border: 0; background: transparent; font-size: 22px; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 12px; transition: transform 0.12s ease, background 0.15s;
+}
+#reacts button:hover { background: rgba(243,207,122,0.18); transform: scale(1.15); }
+#reacts button:active { transform: scale(0.95); }
+.react-bubble {
+  position: fixed; z-index: 45; pointer-events: none; font-size: 34px;
+  transform: translate(-50%, -100%);
+  animation: risefade 1.6s ease-out forwards;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));
+}
+@keyframes risefade {
+  0% { opacity: 0; transform: translate(-50%, -60%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -100%) scale(1.15); }
+  30% { transform: translate(-50%, -115%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -260%) scale(1); }
+}
+
+/* Pause */
+.pause-panel { max-width: 440px; }
+
 /* Player card extras */
 .pcard .meta small.exact { color: var(--gold); font-weight: 800; }
 
@@ -387,6 +457,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
 }
 @media (max-width: 860px) {
   .setup-grid { grid-template-columns: 1fr; }
+  .mode-row { flex-direction: row; }
   #players { top: auto; bottom: 108px; left: 10px; width: 170px; }
   .pcard { padding: 7px 10px; }
   #logwrap { display: none; }
@@ -394,6 +465,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
   .brand-text { display: none; }
   #match-meta { display: none; }
   #dice-dock { left: 10px; right: 10px; justify-content: space-between; }
+  #reacts { right: 10px; bottom: 200px; flex-direction: column; }
   #hint { right: 12px; left: 12px; bottom: 118px; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) {

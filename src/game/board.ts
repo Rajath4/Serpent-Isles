@@ -9,6 +9,8 @@ export interface BoardHandles {
   group: THREE.Group;
   tileTop: (n: number) => THREE.Vector3;
   pulse: (n: number, color?: number) => void;
+  /** Swift-voyage crown marker. Pass null for classic (crown lives at 100). */
+  setGoal: (n: number | null) => void;
   update: (t: number, dt: number) => void;
 }
 
@@ -181,6 +183,21 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
   crown.castShadow = true;
   group.add(crown);
 
+  // — Swift-voyage goal marker (hidden for classic) —
+  const goalRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.05, 10, 48),
+    new THREE.MeshStandardMaterial({ color: 0xffe1a1, emissive: 0xcc8a00, emissiveIntensity: 1.4, metalness: 0.8, roughness: 0.25 }),
+  );
+  goalRing.rotation.x = Math.PI / 2;
+  goalRing.visible = false;
+  group.add(goalRing);
+  const goalBeacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.2, 2.2, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffe1a1, transparent: true, opacity: 0.3, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
+  );
+  goalBeacon.visible = false;
+  group.add(goalBeacon);
+
   scene.add(group);
 
   const tileTop = (n: number) => {
@@ -195,10 +212,26 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     pulse(n: number, color = 0xffd76e) {
       pulseState.set(n, { t: 0, color: new THREE.Color(color) });
     },
+    setGoal(n: number | null) {
+      if (n === null) {
+        goalRing.visible = false;
+        goalBeacon.visible = false;
+        return;
+      }
+      const { x, z } = cellCenter(n);
+      goalRing.position.set(x, TOP_Y + 0.04, z);
+      goalRing.visible = true;
+      goalBeacon.position.set(x, TOP_Y + 1.1, z);
+      goalBeacon.visible = true;
+    },
     update(t: number, dt: number) {
       beacon.rotation.y += dt * 0.8;
       crown.rotation.y += dt * 1.2;
       crown.position.y = TOP_Y + 0.55 + Math.sin(t * 2) * 0.06;
+      if (goalBeacon.visible) {
+        goalBeacon.rotation.y += dt;
+        goalRing.rotation.z += dt * 0.6;
+      }
       pulseState.forEach((s, n) => {
         s.t += dt;
         const mesh = tileMeshes.get(n);

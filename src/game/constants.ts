@@ -57,13 +57,22 @@ export interface Rules {
   exactFinish: boolean;
   extraOnSix: boolean;
   startOnSix: boolean;
+  /** Swift voyage: first past square 50 wins (~5 min). Classic: exact 100. */
+  swift: boolean;
 }
 
 export const DEFAULT_RULES: Rules = {
   exactFinish: true,
   extraOnSix: true,
   startOnSix: false,
+  swift: false,
 };
+
+export const GOAL_CLASSIC = 100;
+export const GOAL_SWIFT = 50;
+
+/** Seat names offered for CPU sailors. */
+export const CPU_NAMES = ['Coral', 'Onyx', 'Pearl', 'Reef'];
 
 /** Board square 1..100 → world position (y = tile top). Square 0 = "off board" staging. */
 export function cellCenter(n: number): { x: number; z: number } {

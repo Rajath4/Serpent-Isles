@@ -13,7 +13,7 @@ import { SoundBank } from './audio';
 import { Effects } from './effects';
 import { makeGlowTexture } from './environment';
 import {
-  PLAYER_DEFS, SNAKES, LADDERS, DEFAULT_RULES,
+  PLAYER_DEFS, SNAKES, LADDERS, DEFAULT_RULES, GOAL_CLASSIC, GOAL_SWIFT,
   TOP_Y, easeInOut, smoother, type PlayerDef, type Rules,
 } from './constants';
 
@@ -26,6 +26,20 @@ export interface PlayerState {
   snakes: number;
   ladders: number;
   active: boolean;
+  isCPU: boolean;
+}
+
+export interface MatchSnapshot {
+  v: 1;
+  names: string[];
+  cpu: boolean[];
+  rules: Rules;
+  squares: number[];
+  rolls: number[];
+  snakes: number[];
+  ladders: number[];
+  current: number;
+  turnCount: number;
 }
 
 export type CameraMode = 'cine' | 'follow' | 'top' | 'free';
@@ -34,7 +48,7 @@ interface Callbacks {
   onTurn: (p: PlayerState, idx: number) => void;
   onDice: (value: number, player: PlayerState) => void;
   onLog: (msg: string, kind: 'info' | 'good' | 'bad' | 'roll') => void;
-  onWin: (winner: PlayerState, stats: { turns: number }) => void;
+  onWin: (winner: PlayerState, stats: { turns: number; rolls: number; sixes: number }) => void;
   onLock: (locked: boolean) => void;
   onProgress: () => void;
   onHover: (square: number | null, x?: number, y?: number) => void;
@@ -103,6 +117,9 @@ export class Game {
   current = 0;
   rules: Rules = { ...DEFAULT_RULES };
   turnCount = 0;
+  goal = GOAL_CLASSIC;
+  matchRolls = 0;
+  matchSixes = 0;
   busy = false;
   cameraMode: CameraMode = 'cine';
   private camTween: { t: number; dur: number; p0: THREE.Vector3; p1: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3 } | null = null;
@@ -357,10 +374,12 @@ export class Game {
   }
 
   // ── setup ────────────────────────────────────────────────────────────────
-  newGame(names: string[], rules: Rules) {
+  newGame(names: string[], rules: Rules, cpu: boolean[] = [], firstLog = true) {
     this.rules = { ...rules };
+    this.goal = this.rules.swift ? GOAL_SWIFT : GOAL_CLASSIC;
     this.turnCount = 0;
-    this.current = 0;
+    this.matchRolls = 0;
+    this.matchSixes = 0;
     this.players = names.map((name, i) => ({
       def: PLAYER_DEFS[i],
       name: name.trim() || PLAYER_DEFS[i].name,
@@ -370,7 +389,10 @@ export class Game {
       snakes: 0,
       ladders: 0,
       active: true,
+      isCPU: !!cpu[i],
     }));
+    // the tides draw first blood — no fixed seating advantage
+    this.current = Math.floor(Math.random() * this.players.length);
     // park all tokens, show only playing ones
     PLAYER_DEFS.forEach((d) => {
       const o = this.tokens.objects.get(d.id);
@@ -379,14 +401,69 @@ export class Game {
       o.visible = playing;
       if (playing) this.tokens.placeInstant(d.id, 0, d.id);
     });
-    this.tokens.setActive(this.players[0].def.id);
+    this.tokens.setActive(this.players[this.current].def.id);
     if (this.director) this.flyOverview();
     else this.setCameraMode('follow');
+    this.board.setGoal(this.goal === GOAL_CLASSIC ? null : this.goal);
     this.board.pulse(1);
-    this.cb.onTurn(this.players[0], 0);
+    this.cb.onTurn(this.players[this.current], this.current);
     this.cb.onProgress();
     this.cb.onLog(`⚔️ ${this.players.map((p) => p.name).join(' vs ')} — may the best explorer win!`, 'info');
+    if (firstLog) {
+      this.cb.onLog(
+        this.rules.swift
+          ? `⚡ Swift voyage — first past square ${this.goal} takes the crown!`
+          : `🎲 The tides choose ${this.players[this.current].name} to roll first!`,
+        'info',
+      );
+    }
     this.sound.turn();
+  }
+
+  /** Serialize the live match for save/resume. */
+  snapshot(): MatchSnapshot {
+    return {
+      v: 1,
+      names: this.players.map((p) => p.name),
+      cpu: this.players.map((p) => p.isCPU),
+      rules: { ...this.rules },
+      squares: this.players.map((p) => p.square),
+      rolls: this.players.map((p) => p.rolls),
+      snakes: this.players.map((p) => p.snakes),
+      ladders: this.players.map((p) => p.ladders),
+      current: this.current,
+      turnCount: this.turnCount,
+    };
+  }
+
+  /** Restore a saved voyage. Returns false if the save is unusable. */
+  restore(s: MatchSnapshot): boolean {
+    try {
+      if (!s || s.v !== 1 || !Array.isArray(s.names)) return false;
+      if (s.names.length < 2 || s.names.length > 4) return false;
+      if (!Array.isArray(s.squares) || s.squares.length !== s.names.length) return false;
+      this.newGame(s.names, { ...DEFAULT_RULES, ...s.rules }, Array.isArray(s.cpu) ? s.cpu : [], false);
+      s.squares.forEach((sq, i) => {
+        const p = this.players[i];
+        p.square = Math.max(0, Math.min(100, sq | 0));
+        p.rolls = (s.rolls?.[i] | 0) || 0;
+        p.snakes = (s.snakes?.[i] | 0) || 0;
+        p.ladders = (s.ladders?.[i] | 0) || 0;
+      });
+      this.current = Math.max(0, Math.min(this.players.length - 1, s.current | 0));
+      this.turnCount = Math.max(0, s.turnCount | 0);
+      this.players.forEach((p) =>
+        this.tokens.placeInstant(p.def.id, p.square, this.slotOf(p.square, p.def.id)),
+      );
+      const cur = this.players[this.current];
+      this.tokens.setActive(cur.def.id);
+      this.cb.onLog(`⛵ Voyage resumed — ${cur.name} to roll (round ${this.turnCount + 1}).`, 'info');
+      this.cb.onTurn(cur, this.current);
+      this.cb.onProgress();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   setCameraMode(m: CameraMode) {
@@ -494,6 +571,20 @@ export class Game {
     return sharing % 4;
   }
 
+  /** Project a champion's head to screen pixels (for reaction bubbles). */
+  tokenScreenPos(id: number): { x: number; y: number } | null {
+    const o = this.tokens.objects.get(id);
+    if (!o || !o.visible) return null;
+    const v = o.position.clone();
+    v.y += 1.7;
+    v.project(this.camera);
+    if (v.z > 1) return null;
+    return {
+      x: (v.x * 0.5 + 0.5) * window.innerWidth,
+      y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+    };
+  }
+
   // ── core turn ────────────────────────────────────────────────────────────
   async rollDice(): Promise<void> {
     if (this.busy || !this.players.length) return;
@@ -504,6 +595,8 @@ export class Game {
 
     const value = 1 + Math.floor(Math.random() * 6);
     player.rolls++;
+    this.matchRolls++;
+    if (value === 6) this.matchSixes++;
     if (this.director) {
       // director: glide to the dice, and HOLD the throw until the lens is
       // nearly locked — the 0.3s shiver then lands exactly on arrival,
@@ -538,12 +631,12 @@ export class Game {
     }
 
     let target = player.square + value;
-    if (target > 100) {
-      if (this.rules.exactFinish) {
-        this.cb.onLog(`🎯 ${player.name} rolled ${value} — needs exactly ${100 - player.square}. Stays put.`, 'info');
+    if (target > this.goal) {
+      if (this.rules.exactFinish && !this.rules.swift) {
+        this.cb.onLog(`🎯 ${player.name} rolled ${value} — needs exactly ${this.goal - player.square}. Stays put.`, 'info');
         return this.endTurn(value === 6 && this.rules.extraOnSix);
       }
-      target = 100;
+      target = this.goal;
     }
     if (player.square === 0 && target === value) {
       // stepping onto the board from staging
@@ -585,13 +678,13 @@ export class Game {
     if (value === 6 && this.rules.extraOnSix) this.sound.six();
 
     // victory
-    if (player.square === 100) {
+    if (player.square >= this.goal) {
       this.celebrate(player);
       this.sound.win();
       this.busy = false;
       this.cb.onLock(false);
       this.cb.onProgress();
-      this.cb.onWin(player, { turns: this.turnCount + 1 });
+      this.cb.onWin(player, { turns: this.turnCount + 1, rolls: this.matchRolls, sixes: this.matchSixes });
       return;
     }
 
@@ -717,7 +810,7 @@ export class Game {
       1.8,
     );
     const at = new THREE.Vector3(obj.position.x, TOP_Y + 0.5, obj.position.z);
-    this.board.pulse(100, 0xffe1a1);
+    this.board.pulse(this.goal, 0xffe1a1);
     // scored to the 1.8s swoop: first fountain mid-dive (seen growing as the
     // lens drops in), second on lock, third behind the win panel's arrival.
     if (REDUCED_MOTION) {

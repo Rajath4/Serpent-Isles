@@ -9,6 +9,11 @@
       content="Serpent Isles is a cinematic 3D Snakes & Ladders board game for 2–4 local players. Jeweled serpents, golden sky-ladders, and a floating island arena — free, no sign-up."
     />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./favicon.svg" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#0b1035" />
     <script>
       // Boot trap: runs before the game module. Any load/eval/render error is
@@ -112,6 +117,14 @@
     </div>
     <div id="hint" class="hidden">👆 Tap <strong>ROLL DICE</strong> to set sail!</div>
 
+    <!-- Reactions -->
+    <div id="reacts" class="hidden" aria-label="Send a reaction">
+      <button data-react="😂" title="Burst out laughing">😂</button>
+      <button data-react="🔥" title="On fire">🔥</button>
+      <button data-react="😱" title="Shocked">😱</button>
+      <button data-react="👏" title="Applause">👏</button>
+    </div>
+
     <!-- Race tracker -->
     <div id="race" class="hidden" aria-label="Race progress">
       <div id="race-track"><div id="race-flag">🏁</div></div>
@@ -135,8 +148,14 @@
         <h1>Serpent <span>Isles</span></h1>
         <p class="sub">
           Race across a floating island arena. Climb golden sky-ladders, dodge jeweled serpents,
-          and claim the crown on square <strong>100</strong>. Pass-and-play with friends — no sign-up, ever.
+          and claim the crown on square <strong>100</strong>. Pass-and-play with friends, sail solo
+          against CPU rivals — no sign-up, ever.
         </p>
+        <button id="btn-resume" class="ghost hidden">⛵ Resume last voyage</button>
+        <div id="hof" class="hidden">
+          <h2>👑 Hall of Fame</h2>
+          <div id="hof-list"></div>
+        </div>
 
         <div class="setup-grid">
           <section>
@@ -147,6 +166,12 @@
               <button data-count="4">4</button>
             </div>
             <div id="names"></div>
+            <p class="tiny-note">Tap 🤖 to hand a seat to a CPU sailor.</p>
+            <h2 class="mt">Voyage length</h2>
+            <div class="mode-row" role="group" aria-label="Voyage length">
+              <button data-mode="classic" class="on"><strong>Classic · 100</strong><small>Exact finish · ~15 min</small></button>
+              <button data-mode="swift"><strong>Swift · 50</strong><small>First past 50 · ~5 min</small></button>
+            </div>
           </section>
           <section>
             <h2>House rules</h2>
@@ -162,7 +187,7 @@
         </div>
 
         <button id="btn-start" class="cta">⚓ &nbsp;Set Sail — Start Match</button>
-        <p class="fine">🖱️ Drag to orbit · scroll to zoom · <kbd>Space</kbd> rolls · 100% local, files never leave your device</p>
+        <p class="fine">🖱️ Drag to orbit · scroll to zoom · <kbd>Space</kbd> rolls · <kbd>Esc</kbd> pauses · 100% local, files never leave your device</p>
       </div>
     </div>
 
@@ -174,7 +199,22 @@
         <div id="win-stats"></div>
         <div class="win-row">
           <button id="btn-rematch" class="cta">⚔️ Rematch</button>
+          <button id="btn-share" class="ghost">📣 Share</button>
           <button id="btn-change" class="ghost">Change crew</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause -->
+    <div id="pause" class="overlay hidden">
+      <div class="panel pause-panel">
+        <p class="kicker">Dropped anchor</p>
+        <h2>Paused</h2>
+        <p class="sub" id="pause-sub">The isles wait for your return.</p>
+        <div class="win-row">
+          <button id="btn-continue" class="cta">▶ &nbsp;Resume</button>
+          <button id="btn-p-restart" class="ghost">↺ Restart</button>
+          <button id="btn-quit" class="ghost">⚓ Quit to menu</button>
         </div>
       </div>
     </div>
@@ -184,14 +224,15 @@
       <div class="panel help-panel">
         <h2>How to play</h2>
         <ol>
-          <li>Youngest explorer rolls first — then pass the device clockwise.</li>
+          <li>The tides draw who rolls first — then pass the device around (or hand seats to 🤖 CPU sailors from the crew screen).</li>
           <li>Tap <strong>Roll Dice</strong> (or <kbd>Space</kbd>). Your champion hops square by square.</li>
           <li>Land on a <strong class="gold-t">gold ring</strong> to climb a sky-ladder. Land on a <strong class="red-t">red ring</strong> and a serpent drags you down.</li>
           <li>Rolling a <strong>6</strong> grants a bonus roll — but three 6s in a row skips your move.</li>
-          <li>First to square <strong>100</strong> takes the crown. Exact roll required (if enabled).</li>
+          <li>Classic: first to square <strong>100</strong> takes the crown (exact roll if enabled). Swift: first past <strong>50</strong> wins.</li>
+          <li>Interrupted? Your voyage <strong>auto-saves every turn</strong> — resume it anytime from the crew screen.</li>
           <li><strong>Hover any tile</strong> to spotlight its serpent or ladder — the rest falls quiet. The <strong>🐍 button</strong> up top fades (👻) or hides (🚫) all routes for a clean board.</li>
           <li><strong>📺 Auto director</strong> (default) holds a top view, cuts to the dice, tracks every hop, slide and climb — then settles home. Grab the camera anytime with drag/scroll; it hands control straight back and resumes when you're idle.</li>
-          <li>Shortcuts: <kbd>Space</kbd> roll · <kbd>C</kbd> camera · <kbd>M</kbd> mute · <kbd>H</kbd> help · <kbd>Esc</kbd> close.</li>
+          <li>Shortcuts: <kbd>Space</kbd> roll · <kbd>C</kbd> camera · <kbd>M</kbd> mute · <kbd>H</kbd> help · <kbd>Esc</kbd> pause.</li>
         </ol>
         <button id="btn-close-help" class="cta">Got it — back to the isles</button>
       </div>

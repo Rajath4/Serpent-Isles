@@ -1,0 +1,19 @@
+{
+  "name": "Serpent Isles — 3D Snakes & Ladders",
+  "short_name": "Serpent Isles",
+  "description": "Cinematic 3D Snakes & Ladders for 2–4 local players. Works fully offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1035",
+  "theme_color": "#0b1035",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
