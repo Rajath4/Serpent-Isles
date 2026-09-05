@@ -106,6 +106,8 @@ export class Game {
   private trackWant = new THREE.Vector3();
   private trackLook = new THREE.Vector3();
   private readonly trackUp = new THREE.Vector3(0, 0.5, 0);
+  /** scratch for per-tick particle emission (zero-alloc juice) */
+  private fxScratch = new THREE.Vector3();
   private lastInteract = -1000;
   private timeScale = 1;
   // — silent performance governor: frame counter, shadow stride, adaptive res —
@@ -701,6 +703,8 @@ export class Game {
       await this.waitForCamera(0.3);
     }
     if (g !== this.gen) return; // restarted during the camera glide — no phantom throw
+    // the roller gets a pulse — all eyes on the actor (reads position, zero alloc)
+    this.fx.ring(this.tokenObj(player).position, player.def.color, 1.0, 0.5);
     setTimeout(() => {
       if (g === this.gen) this.sound.whoosh();
     }, 280); // meets the launch mid-shiver
@@ -868,6 +872,7 @@ export class Game {
       return;
     }
     this.fx.snakePoof(obj.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
+    this.sound.slideGliss();
     if (this.director) {
       // low dramatic chase down the serpent's back
       this.trackFn = (out) => out.copy(obj.position);
@@ -875,10 +880,16 @@ export class Game {
     }
     const dest = this.tokens.tokenPos(tail, this.slotOf(tail, p.def.id));
     const dur = 1.5;
+    let wisp = 0;
     await this.tween(dur, (e) => {
       const pt = curve.getPoint(e);
       obj.position.lerpVectors(pt, dest, e * e * 0.25);
       obj.position.y = pt.y + 0.25 + Math.sin(e * Math.PI) * 0.15;
+      // blood-mist wisps bleed off the rider — pooled, zero-alloc
+      if ((wisp = (wisp + 1) % 3) === 0) {
+        this.fx.burst(this.fxScratch.set(obj.position.x, obj.position.y + 0.3, obj.position.z),
+          { color: 0xff5f7f, count: 2, speed: 0.7, up: 1.6, life: 0.5, size: 0.24, gravity: 1.5 });
+      }
     });
     if (g !== this.gen) return;
     obj.position.copy(dest);
@@ -897,15 +908,22 @@ export class Game {
     }
     const dest = this.tokens.tokenPos(top, this.slotOf(top, p.def.id));
     this.fx.ladderSparkle(obj.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+    this.sound.climbGliss();
     if (this.director) {
       this.trackFn = (out) => out.copy(obj.position);
       this.trackOff.set(3.4, 2.8, 4.8);
     }
+    let wisp = 0;
     await this.tween(1.5, (e) => {
       const pt = curve.getPoint(e);
       const wobble = Math.sin(e * Math.PI * 6) * 0.05 * (1 - e);
       obj.position.set(pt.x + wobble, pt.y + 0.32, pt.z);
       if (e > 0.92) obj.position.lerp(dest, (e - 0.92) / 0.08);
+      // golden motes rise off the climber — pooled, zero-alloc
+      if ((wisp = (wisp + 1) % 3) === 0) {
+        this.fx.burst(this.fxScratch.set(obj.position.x, obj.position.y + 0.2, obj.position.z),
+          { color: 0xffd76e, count: 2, speed: 0.5, up: 2.2, life: 0.5, size: 0.22, gravity: 1.2 });
+      }
     });
     if (g !== this.gen) return;
     obj.position.copy(dest);

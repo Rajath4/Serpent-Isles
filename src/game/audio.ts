@@ -143,6 +143,23 @@ export class SoundBank {
     this.tone(1320, 0.3, 'sine', 0.08, 0.06);
   }
 
+  /** Rising golden glissando bed across a ladder climb (whisper-quiet). */
+  climbGliss() {
+    this.tone(320, 1.5, 'sine', 0.06, 0, 1250);
+    this.tone(640, 1.5, 'triangle', 0.03, 0.08, 1660);
+  }
+
+  /** Falling serpent glissando bed across a slide (whisper-quiet). */
+  slideGliss() {
+    this.tone(620, 1.5, 'sawtooth', 0.04, 0, 110);
+  }
+
+  /** Match-point heartbeat — two soft low ticks when the crown is ≤6 away. */
+  heartbeat() {
+    this.tone(150, 0.09, 'sine', 0.05);
+    this.tone(130, 0.11, 'sine', 0.05, 0.18);
+  }
+
   hop(step: number) {
     const base = 420 + (step % 8) * 45;
     this.tone(base, 0.11, 'triangle', 0.2, 0, base * 1.5);

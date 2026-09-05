@@ -243,7 +243,14 @@ const game = new Game(canvas, sound, {
   onTurn: (p: PlayerState) => {
     clearCpuTimer();
     $('turn-label').textContent = `${p.isCPU ? '🤖 ' : ''}${p.name} to roll`;
+    const pill = $('turn-pill');
+    pill.classList.remove('swap');
+    void pill.offsetWidth;
+    pill.classList.add('swap');
     const dot = $('turn-dot');
+    dot.style.background = p.def.glow;
+    dot.style.color = p.def.glow;
+    pill.style.borderColor = p.def.glow;
     dot.style.background = p.def.glow;
     dot.style.color = p.def.glow;
     $('turn-pill').style.borderColor = p.def.glow;
@@ -267,6 +274,11 @@ const game = new Game(canvas, sound, {
     }
     lastTurnWasCpu = p.isCPU;
     lastTurnName = p.name;
+    const remaining = game.goal - p.square;
+    if (remaining > 0 && remaining <= 6) {
+      // the crown is close enough to hear — lands after the banner, never a klaxon
+      window.setTimeout(() => sound.heartbeat(), 450);
+    }
     scheduleCpuRoll(p);
   },
   onDice: (v: number, p: PlayerState) => {
