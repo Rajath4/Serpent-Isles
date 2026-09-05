@@ -112,11 +112,6 @@ export class SoundBank {
     this.noise(0.03, 0.08, 0, 4000);
   }
 
-  /** Party pop for emoji reactions. */
-  pop() {
-    this.tone(700, 0.09, 'sine', 0.16, 0, 1150);
-  }
-
   hop(step: number) {
     const base = 420 + (step % 8) * 45;
     this.tone(base, 0.11, 'triangle', 0.2, 0, base * 1.5);

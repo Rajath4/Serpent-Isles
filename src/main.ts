@@ -42,7 +42,6 @@ let matchLive = false;
 let diceHistory: number[] = [];
 let cpuTimer: number | null = null;
 let lastWin: { name: string; turns: number } | null = null;
-let reactAt = 0;
 
 function clearCpuTimer() {
   if (cpuTimer !== null) {
@@ -51,8 +50,31 @@ function clearCpuTimer() {
   }
 }
 
-/** Pocket buzz — guarded haptics for landings, bites and crowns. */
+/** The silicon sailor ponders, then rolls — never instant machine-gun turns.
+ *  NOTE: must NOT consult game.busy here — onTurn fires mid-handoff while the
+ *  previous turn still holds the lock; the fire-time check below is the real guard. */
+function scheduleCpuRoll(p: PlayerState) {
+  if (!p.isCPU || !$('win').classList.contains('hidden')) return;
+  if (!$('pause').classList.contains('hidden')) return; // frozen while paused
+  cpuTimer = window.setTimeout(
+    () => {
+      cpuTimer = null;
+      if (game.activePlayer?.def.id === p.def.id && !game.busy) doAutoRoll();
+    },
+    1100 + Math.random() * 900,
+  );
+}
+
+/** Pocket buzz — only after a real gesture (browsers scold otherwise). */
+let canBuzz = false;
+window.addEventListener('pointerdown', () => {
+  canBuzz = true;
+}, { passive: true });
+window.addEventListener('keydown', () => {
+  canBuzz = true;
+});
 function buzz(p: number | number[]) {
+  if (!canBuzz) return;
   try {
     (navigator as Navigator & { vibrate?: (p: number | number[]) => boolean }).vibrate?.(p);
   } catch {
@@ -240,16 +262,7 @@ const game = new Game(canvas, sound, {
     }
     lastTurnWasCpu = p.isCPU;
     lastTurnName = p.name;
-    if (p.isCPU && $('win').classList.contains('hidden')) {
-      // the silicon sailor ponders, then rolls — no instant machine-gun turns
-      cpuTimer = window.setTimeout(
-        () => {
-          cpuTimer = null;
-          if (game.activePlayer?.def.id === p.def.id && !game.busy) doRoll();
-        },
-        1100 + Math.random() * 900,
-      );
-    }
+    scheduleCpuRoll(p);
   },
   onDice: (v: number, p: PlayerState) => {
     renderDiceFace(v);
@@ -350,6 +363,19 @@ function elapsedStr(): string {
   const s = Math.floor((Date.now() - matchStart) / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
+
+// live debug handle (harmless in production; invaluable for support)
+(window as unknown as { __serpent?: unknown }).__serpent = {
+  game,
+  state: () => ({
+    busy: game.busy,
+    current: game.current,
+    turn: game.activePlayer?.name ?? null,
+    squares: game.players.map((p) => `${p.name}:${p.square}${p.isCPU ? '(cpu)' : ''}`),
+    turnCount: game.turnCount,
+    goal: game.goal,
+  }),
+};
 setInterval(() => {
   if ($('topbar').classList.contains('hidden')) return;
   $('clock').textContent = elapsedStr();
@@ -627,7 +653,7 @@ function enterMatch(
   $('setup').classList.add('hidden');
   $('win').classList.add('hidden');
   $('pause').classList.add('hidden');
-  ['topbar', 'players', 'dice-dock', 'logwrap', 'race', 'reacts'].forEach((id) =>
+  ['topbar', 'players', 'dice-dock', 'logwrap', 'race'].forEach((id) =>
     $(id).classList.remove('hidden'),
   );
   game.resize();
@@ -659,7 +685,7 @@ function quitToMenu() {
   $('pause').classList.add('hidden');
   $('win').classList.add('hidden');
   $('hover-chip').classList.add('hidden');
-  ['topbar', 'players', 'dice-dock', 'logwrap', 'race', 'reacts', 'hint'].forEach((id) =>
+  ['topbar', 'players', 'dice-dock', 'logwrap', 'race', 'hint'].forEach((id) =>
     $(id).classList.add('hidden'),
   );
   $('setup').classList.remove('hidden');
@@ -691,9 +717,14 @@ $('btn-resume').addEventListener('click', () => {
 
 // ── input: dice, shortcuts, pause ────────────────────────────────────────────
 function doRoll() {
-  if (game.activePlayer?.isCPU) return; // silicon sailors roll themselves
+  if (game.activePlayer?.isCPU) return; // humans can't roll for silicon sailors
   sound.unlock();
   ($('btn-roll') as HTMLButtonElement).classList.remove('attention');
+  void game.rollDice();
+}
+/** CPU drivers roll through here — same throw, no human gate. */
+function doAutoRoll() {
+  sound.unlock();
   void game.rollDice();
 }
 $('btn-roll').addEventListener('click', doRoll);
@@ -704,6 +735,7 @@ function openPause() {
   if (!$('setup').classList.contains('hidden')) return; // no match to pause
   if (!$('win').classList.contains('hidden')) return;
   if (!$('help').classList.contains('hidden')) $('help').classList.add('hidden');
+  clearCpuTimer(); // freeze silicon sailors mid-ponder
   const p = game.activePlayer;
   $('pause-sub').textContent = p
     ? `${p.isCPU ? '🤖 ' : ''}${p.name} to roll · round ${game.turnCount + 1}`
@@ -713,6 +745,9 @@ function openPause() {
 }
 function closePause() {
   $('pause').classList.add('hidden');
+  // unfreeze: a waiting CPU resumes pondering where it left off
+  const p = game.activePlayer;
+  if (p && game.players.length) scheduleCpuRoll(p);
 }
 $('btn-continue').addEventListener('click', () => {
   sound.click();
@@ -868,30 +903,6 @@ $('btn-share').addEventListener('click', async () => {
       toast(`📣 ${text}`);
     }
   }
-});
-
-// ── reactions: an emoji erupts over the active champion ─────────────────────
-document.querySelectorAll('#reacts button').forEach((b) => {
-  b.addEventListener('click', () => {
-    const now = performance.now();
-    if (now - reactAt < 1200) return;
-    reactAt = now;
-    const p = game.activePlayer;
-    if (!p || !game.players.length) return;
-    const at = game.tokenScreenPos(p.def.id);
-    if (!at) return;
-    sound.unlock();
-    sound.pop();
-    buzz(15);
-    const d = document.createElement('div');
-    d.className = 'react-bubble';
-    d.textContent = (b as HTMLElement).dataset.react ?? '🎉';
-    d.style.left = `${Math.max(30, Math.min(window.innerWidth - 30, at.x))}px`;
-    d.style.top = `${Math.max(70, at.y)}px`;
-    document.body.appendChild(d);
-    d.addEventListener('animationend', () => d.remove());
-    window.setTimeout(() => d.remove(), 1800);
-  });
 });
 
 // hover ticks

@@ -14,7 +14,7 @@ no downloads, no external models. 100% offline, installable PWA, zero tracking.
 - **⚡ Swift voyage** — first past 50 in ~5 min, alongside the classic exact-100 epic
 - **⛵ Save/resume** — every turn auto-saves locally; interruptions lose nothing
 - **👑 Hall of Fame** — local legends, dice-fairness proof, fortune favorites
-- **Party UX** — emoji reactions over tokens, haptics, share-victory, pause menu, pass-the-device toasts, race tracker, match feed
+- **Party UX** — pause menu, haptics, share-victory, pass-the-device toasts, race tracker, match feed
 - **Full game feel** — hop-by-hop movement, serpent slides, ladder climbs, tile pulses, auto-director cameras
 - **Procedural WebAudio** — rattle, charge, whoosh, thuds, ladder arpeggio, serpent hiss, fanfare + generative music-box ambience (muteable)
 - **Cameras** — 📺 auto director by default (top overview at rest, dice close-ups,

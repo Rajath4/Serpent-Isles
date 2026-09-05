@@ -571,20 +571,6 @@ export class Game {
     return sharing % 4;
   }
 
-  /** Project a champion's head to screen pixels (for reaction bubbles). */
-  tokenScreenPos(id: number): { x: number; y: number } | null {
-    const o = this.tokens.objects.get(id);
-    if (!o || !o.visible) return null;
-    const v = o.position.clone();
-    v.y += 1.7;
-    v.project(this.camera);
-    if (v.z > 1) return null;
-    return {
-      x: (v.x * 0.5 + 0.5) * window.innerWidth,
-      y: (-v.y * 0.5 + 0.5) * window.innerHeight,
-    };
-  }
-
   // ── core turn ────────────────────────────────────────────────────────────
   async rollDice(): Promise<void> {
     if (this.busy || !this.players.length) return;
