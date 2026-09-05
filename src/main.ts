@@ -45,8 +45,14 @@ let lastTurnName = '';
 let lastTurnWasCpu = false;
 let matchLive = false;
 let scoutShown = false;
+// drama trackers: leader crown-holder + who has smelled the finish
+let dramaLeader = -1;
+const dramaRange = new Set<number>();
+let dramaArmed = true;
 let diceHistory: number[] = [];
 let cpuTimer: number | null = null;
+let restartArmed = false;
+let restartTimer = 0;
 let lastWin: { name: string; turns: number } | null = null;
 
 function clearCpuTimer() {
@@ -129,6 +135,51 @@ function updateCards() {
       posEl.textContent = `🎯 needs exactly ${goal - pl.square}`;
     else if (pl.square >= goal) posEl.textContent = '👑 crowned!';
     else posEl.textContent = `■ ${pl.square} · ${goal - pl.square} to go`;
+  });
+  announceDrama();
+}
+
+/**
+ * Party-game narration: crown steals and finish-line arrivals hit the feed.
+ * Transition-triggered (never repeats), seeded silently after restores.
+ */
+function announceDrama() {
+  if (!dramaArmed) return;
+  const pls = game.players;
+  if (!pls.length) return;
+  const goal = game.goal;
+  const best = Math.max(0, ...pls.map((p) => p.square));
+  const holder = pls.find((p) => p.square === best && best > 0);
+  if (holder && holder.def.id !== dramaLeader) {
+    dramaLeader = holder.def.id;
+    log(`👑 ${holder.name} seizes the lead!`, 'roll');
+    announce(`${holder.name} takes the lead.`);
+  } else if (!holder) {
+    dramaLeader = -1;
+  }
+  pls.forEach((p) => {
+    const remaining = goal - p.square;
+    if (p.square > 0 && remaining > 0 && remaining <= 6 && !dramaRange.has(p.def.id)) {
+      dramaRange.add(p.def.id);
+      log(`🎯 ${p.name} needs exactly ${remaining}!`, 'roll');
+      announce(`${p.name} needs exactly ${remaining} to win.`);
+    } else if (!(p.square > 0 && remaining > 0 && remaining <= 6)) {
+      dramaRange.delete(p.def.id);
+    }
+  });
+}
+
+/** Seed drama trackers from a restored position without narrating it. */
+function syncDrama() {
+  const pls = game.players;
+  const goal = game.goal;
+  const best = Math.max(0, ...pls.map((p) => p.square));
+  const holder = pls.find((p) => p.square === best && best > 0);
+  dramaLeader = holder ? holder.def.id : -1;
+  dramaRange.clear();
+  pls.forEach((p) => {
+    const remaining = goal - p.square;
+    if (p.square > 0 && remaining > 0 && remaining <= 6) dramaRange.add(p.def.id);
   });
 }
 
@@ -571,6 +622,8 @@ function resetMatchChrome() {
   lastTurnWasCpu = false;
   matchLive = false;
   scoutShown = false;
+  dramaLeader = -1;
+  dramaRange.clear();
   $('hint').innerHTML = '👆 Tap <strong>ROLL DICE</strong> to set sail!';
   $('clock').textContent = '00:00';
   $('round').textContent = 'Round 1';
@@ -704,9 +757,12 @@ function enterMatch(
   if (snap) {
     matchStart = Date.now() - (snap.elapsedMs ?? 0);
     matchLive = true; // the resume log covers the greeting
+    dramaArmed = false; // seed silently — a restore is not a storyline
     if (!game.restore(snap)) {
       game.newGame(names, rules, cpu);
     }
+    syncDrama();
+    dramaArmed = true;
     toast('⛵ Voyage resumed — good luck!');
   } else {
     game.newGame(names, rules, cpu);
@@ -781,6 +837,7 @@ function openPause() {
   if (!$('win').classList.contains('hidden')) return;
   if (!$('help').classList.contains('hidden')) $('help').classList.add('hidden');
   clearCpuTimer(); // freeze silicon sailors mid-ponder
+  disarmRestart();
   const p = game.activePlayer;
   $('pause-sub').textContent = p
     ? `${p.isCPU ? '🤖 ' : ''}${p.name} to roll · round ${game.turnCount + 1}`
@@ -808,9 +865,23 @@ $('btn-continue').addEventListener('click', () => {
 });
 $('btn-p-restart').addEventListener('click', () => {
   sound.click();
+  const btn = $('btn-p-restart') as HTMLButtonElement;
+  if (!restartArmed) {
+    // one tap arms, two taps sink ships — no rage-quit misclicks
+    restartArmed = true;
+    btn.textContent = '⚠️ Tap again to confirm';
+    window.clearTimeout(restartTimer);
+    restartTimer = window.setTimeout(disarmRestart, 3000);
+    return;
+  }
   closePause();
   restartMatch();
 });
+function disarmRestart() {
+  restartArmed = false;
+  window.clearTimeout(restartTimer);
+  ($('btn-p-restart') as HTMLButtonElement).textContent = '↺ Restart';
+}
 $('btn-quit').addEventListener('click', () => {
   sound.click();
   quitToMenu();

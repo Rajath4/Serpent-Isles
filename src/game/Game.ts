@@ -96,6 +96,11 @@ export class Game {
   private pointerClient = { x: 0, y: 0 };
   private pointerOnBoard = false;
   private pointerDirty = false;
+  // tap-to-inspect (touch parity for hover): quick stationary tap peeks a tile
+  private downX = 0;
+  private downY = 0;
+  private downT = 0;
+  private tapTimer: number | null = null;
   private dragging = false;
   private hovered: number | null = null;
 
@@ -228,6 +233,10 @@ export class Game {
       this.pointerClient = { x: e.clientX, y: e.clientY };
       this.pointerOnBoard = true;
       this.pointerDirty = true;
+      if (this.tapTimer !== null) {
+        clearTimeout(this.tapTimer);
+        this.tapTimer = null;
+      }
     });
     canvas.addEventListener('pointerleave', () => {
       this.pointerOnBoard = false;
@@ -237,10 +246,17 @@ export class Game {
         this.cb.onHover(null);
       }
     });
-    canvas.addEventListener('pointerdown', () => {
+    canvas.addEventListener('pointerdown', (e) => {
       this.dragging = true;
       this.lastInteract = this.elapsed;
       this.canvas.style.cursor = 'grabbing';
+      this.downX = e.clientX;
+      this.downY = e.clientY;
+      this.downT = performance.now();
+      if (this.tapTimer !== null) {
+        clearTimeout(this.tapTimer);
+        this.tapTimer = null;
+      }
       if (this.hovered !== null) {
         this.hovered = null;
         this.cb.onHover(null);
@@ -251,9 +267,35 @@ export class Game {
     canvas.addEventListener('wheel', () => {
       this.lastInteract = this.elapsed;
     }, { passive: true });
-    window.addEventListener('pointerup', () => {
+    window.addEventListener('pointerup', (e) => {
       this.dragging = false;
       this.canvas.style.cursor = '';
+      // tap (not drag) on the arena during a match → inspect that tile briefly
+      const dx = e.clientX - this.downX;
+      const dy = e.clientY - this.downY;
+      const quick = performance.now() - this.downT < 450;
+      if (
+        (e.target as HTMLElement | null) === (this.canvas as unknown as HTMLElement) &&
+        this.players.length &&
+        quick &&
+        dx * dx + dy * dy < 100
+      ) {
+        const r = this.canvas.getBoundingClientRect();
+        this.pointerNdc.set(
+          ((e.clientX - r.left) / r.width) * 2 - 1,
+          -((e.clientY - r.top) / r.height) * 2 + 1,
+        );
+        this.pointerClient = { x: e.clientX, y: e.clientY };
+        this.pointerOnBoard = true;
+        this.pointerDirty = true;
+        if (this.tapTimer !== null) clearTimeout(this.tapTimer);
+        this.tapTimer = window.setTimeout(() => {
+          this.tapTimer = null;
+          this.hovered = null;
+          this.applyHoverFocus(null);
+          this.cb.onHover(null);
+        }, 2600);
+      }
     });
 
     this.resize();
@@ -547,6 +589,14 @@ export class Game {
     if (this.director) this.flyOverview();
     else this.setCameraMode('follow');
     this.board.setGoal(this.goal === GOAL_CLASSIC ? null : this.goal);
+    // fresh match, fresh eyes — no stale tile inspection leaking in
+    if (this.tapTimer !== null) {
+      clearTimeout(this.tapTimer);
+      this.tapTimer = null;
+    }
+    this.hovered = null;
+    this.applyHoverFocus(null);
+    this.cb.onHover(null);
     this.board.pulse(1);
     this.cb.onTurn(this.players[this.current], this.current);
     this.cb.onProgress();
