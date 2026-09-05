@@ -53,6 +53,8 @@ interface Callbacks {
   onLock: (locked: boolean) => void;
   onProgress: () => void;
   onHover: (square: number | null, x?: number, y?: number) => void;
+  /** True while a menu overlay covers the arena (for render budgeting). */
+  uiCovered: () => boolean;
 }
 
 export const REDUCED_MOTION =
@@ -254,12 +256,21 @@ export class Game {
     // intro sweep
     this.flyTo(new THREE.Vector3(11.5, 10, 15.5), new THREE.Vector3(0, 0.2, 0), 3.2);
 
+    // prewarm: compile every shader program NOW, behind the loader veil —
+    // first frames stay smooth instead of hitching on lazy compilation
+    this.renderer.compile(this.scene, this.camera);
+
     const clock = new THREE.Clock();
     const loop = () => {
       requestAnimationFrame(loop);
       const rawDt = Math.min(clock.getDelta(), 0.05);
       this.frame++;
-      if ((this.frame & 1) === 0) this.renderer.shadowMap.needsUpdate = true;
+      // on-demand shadows: shadow maps are view-independent, so they only need
+      // re-rendering while casters move (action) — plus a twice-a-second
+      // catch-up for idle sway (bobbing heads, spinning die, turning crown)
+      const actionActive =
+        this.busy || this.trackFn !== null || this.dice.rolling || this.camTween !== null;
+      if (actionActive || this.frame % 30 === 0) this.renderer.shadowMap.needsUpdate = true;
       this.autoPerf(rawDt);
       // impact slow-mo eases back to full speed — tweens, dice, particles and
       // camera all breathe together, so the world never tears
@@ -366,7 +377,12 @@ export class Game {
       // foliage can never block the lens — ghost whatever stands in the way.
       // every 4th frame is plenty (the fade itself is smoothed); offset from hover.
       if ((this.frame & 3) === 1) this.env.fadeOccluders(this.camera.position, this.controls.target);
-      this.renderer.render(this.scene, this.camera);
+      // menu budgeting: behind an opaque overlay with nothing in flight,
+      // presenting every 2nd frame is invisible — updates keep full rate.
+      const idleCovered = !actionActive && this.cb.uiCovered();
+      if (!(idleCovered && (this.frame & 1) === 1)) {
+        this.renderer.render(this.scene, this.camera);
+      }
     };
     loop();
   }
@@ -899,7 +915,8 @@ export class Game {
     const dur = 1.5;
     let wisp = 0;
     await this.tween(dur, (e) => {
-      const pt = curve.getPoint(e);
+      // fxScratch reused safely: point values are consumed before the emission below
+      const pt = curve.getPoint(e, this.fxScratch);
       obj.position.lerpVectors(pt, dest, e * e * 0.25);
       obj.position.y = pt.y + 0.25 + Math.sin(e * Math.PI) * 0.15;
       // blood-mist wisps bleed off the rider — pooled, zero-alloc
@@ -932,7 +949,8 @@ export class Game {
     }
     let wisp = 0;
     await this.tween(1.5, (e) => {
-      const pt = curve.getPoint(e);
+      // fxScratch reused safely: point values are consumed before the emission below
+      const pt = curve.getPoint(e, this.fxScratch);
       const wobble = Math.sin(e * Math.PI * 6) * 0.05 * (1 - e);
       obj.position.set(pt.x + wobble, pt.y + 0.32, pt.z);
       if (e > 0.92) obj.position.lerp(dest, (e - 0.92) / 0.08);

@@ -342,7 +342,8 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     const a = Math.random() * Math.PI * 2;
     const r = 60 + Math.random() * 70;
     s.position.set(Math.cos(a) * r, 18 + Math.random() * 22, Math.sin(a) * r);
-    const sc = 22 + Math.random() * 26;
+    // low tier shrinks the biggest overdraw layers, not their count alone
+    const sc = (22 + Math.random() * 26) * (Q.tier === 'low' ? 0.72 : 1);
     s.scale.set(sc, sc * 0.42, 1);
     scene.add(s);
     clouds.push(s);

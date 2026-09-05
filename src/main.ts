@@ -388,6 +388,9 @@ const game = new Game(canvas, sound, {
     chip.style.top = `${y}px`;
     chip.classList.remove('hidden');
   },
+  // render budgeting: a menu overlay covers the arena
+  uiCovered: () =>
+    ['setup', 'win', 'help', 'pause'].some((id) => !$(id).classList.contains('hidden')),
 });
 
 function elapsedStr(): string {
