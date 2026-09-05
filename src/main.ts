@@ -908,10 +908,9 @@ $('btn-close-help').addEventListener('click', () => {
 $('help').addEventListener('click', (e) => {
   if (e.target === $('help')) $('help').classList.add('hidden');
 });
-$('btn-restart').addEventListener('click', () => {
+$('btn-menu').addEventListener('click', () => {
   sound.click();
-  closePause();
-  restartMatch();
+  openPause();
 });
 $('btn-rematch').addEventListener('click', () => {
   sound.click();
