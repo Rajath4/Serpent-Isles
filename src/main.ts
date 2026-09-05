@@ -444,12 +444,29 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── camera ─────────────────────────────────────────────────────────────────
+let directorSaved = true;
+try {
+  directorSaved = localStorage.getItem('serpent-director') !== '0';
+} catch {
+  /* ignore */
+}
+game.setDirector(directorSaved);
+document.querySelectorAll('.seg button').forEach((x) =>
+  x.classList.toggle('on', (x as HTMLElement).dataset.cam === (directorSaved ? 'auto' : 'follow')),
+);
 document.querySelectorAll('.seg button').forEach((b) => {
   b.addEventListener('click', () => {
     sound.click();
     document.querySelectorAll('.seg button').forEach((x) => x.classList.remove('on'));
     b.classList.add('on');
-    game.setCameraMode((b as HTMLElement).dataset.cam as 'cine' | 'follow' | 'top' | 'free');
+    const cam = (b as HTMLElement).dataset.cam!;
+    if (cam === 'auto') game.setDirector(true);
+    else game.setCameraMode(cam as 'cine' | 'follow' | 'top' | 'free');
+    try {
+      localStorage.setItem('serpent-director', cam === 'auto' ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   });
 });
 

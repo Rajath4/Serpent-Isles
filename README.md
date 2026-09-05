@@ -13,7 +13,9 @@ no downloads, no external models.
 - **Full game feel** — hop-by-hop movement, snake slides along the serpent's body, ladder climbs, tile pulses, camera fly-tos
 - **Procedural WebAudio SFX** — dice rattle, hops, ladder arpeggio, serpent hiss, fanfare + ocean ambience (muteable)
 - **Premium UX** — setup crew screen, house rules, live HUD, match feed, toasts, win celebration with confetti + stats
-- **Cameras** — 🎬 cinematic auto-orbit · 🎯 follow · 🗺️ top-down · 🕹️ free orbit (drag/scroll)
+- **Cameras** — 📺 auto director by default (top overview at rest, dice close-ups,
+  tracking shots for hops/slides/climbs, slow showcase drift when idle, instant
+  surrender to drag/scroll) · 🎬 cinematic · 🎯 follow · 🗺️ top-down · 🕹️ free orbit
 - **House rules** — exact-finish, bonus roll on 6 (3rd straight 6 forfeits), start-on-6
 
 ## 🚀 Run

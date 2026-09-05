@@ -79,6 +79,12 @@ export class Game {
   private pointerOnBoard = false;
   private dragging = false;
   private hovered: number | null = null;
+
+  // — auto director: top overview at rest, tracking on action, drift when idle —
+  director = true;
+  private trackFn: (() => THREE.Vector3) | null = null;
+  private trackOff = new THREE.Vector3(2.6, 3.8, 4.2);
+  private lastInteract = -1000;
   private sound: SoundBank;
   private cb: Callbacks;
 
@@ -168,12 +174,17 @@ export class Game {
     });
     canvas.addEventListener('pointerdown', () => {
       this.dragging = true;
+      this.lastInteract = this.elapsed;
       if (this.hovered !== null) {
         this.hovered = null;
         this.cb.onHover(null);
         this.applyHoverFocus(null);
       }
     });
+    // deliberate camera input (orbit / zoom) pauses the director's showcase
+    canvas.addEventListener('wheel', () => {
+      this.lastInteract = this.elapsed;
+    }, { passive: true });
     window.addEventListener('pointerup', () => {
       this.dragging = false;
     });
@@ -207,7 +218,12 @@ export class Game {
         this.camera.position.lerpVectors(c.p0, c.p1, k);
         this.controls.target.lerpVectors(c.t0, c.t1, k);
         if (c.t >= c.dur) this.camTween = null;
-      } else if (this.cameraMode === 'follow' && this.players.length) {
+      } else if (this.director && this.trackFn) {
+        // action tracking shot — glued to the moving champion
+        const anchor = this.trackFn();
+        this.camera.position.lerp(anchor.clone().add(this.trackOff), 1 - Math.pow(0.004, dt));
+        this.controls.target.lerp(anchor.clone().add(new THREE.Vector3(0, 0.5, 0)), 1 - Math.pow(0.002, dt));
+      } else if (!this.director && this.cameraMode === 'follow' && this.players.length) {
         const p = this.players[this.current];
         const obj = this.tokens.objects.get(p.def.id);
         if (obj && !this.busy) {
@@ -223,6 +239,12 @@ export class Game {
       this.dice.update(t, dt);
       this.tokens.update(t, dt);
       this.fx.update(dt);
+      // idle showcase: slow drift when the director is on and everyone is AFK
+      if (this.director) {
+        this.controls.autoRotate =
+          !this.busy && !this.trackFn && !this.camTween && this.elapsed - this.lastInteract > 20;
+        if (this.controls.autoRotate) this.controls.autoRotateSpeed = 0.45;
+      }
       // turn marker rides above the active champion
       if (this.players.length) {
         const p = this.players[this.current];
@@ -290,7 +312,8 @@ export class Game {
       if (playing) this.tokens.placeInstant(d.id, 0, d.id);
     });
     this.tokens.setActive(this.players[0].def.id);
-    this.setCameraMode('follow');
+    if (this.director) this.flyOverview();
+    else this.setCameraMode('follow');
     this.board.pulse(1);
     this.cb.onTurn(this.players[0], 0);
     this.cb.onProgress();
@@ -300,6 +323,8 @@ export class Game {
 
   setCameraMode(m: CameraMode) {
     this.cameraMode = m;
+    this.director = false; // a manual choice always wins over the director
+    this.trackFn = null;
     this.controls.autoRotate = m === 'cine' && !REDUCED_MOTION;
     if (m === 'cine') this.flyTo(new THREE.Vector3(11.5, 10, 15.5), new THREE.Vector3(0, 0.2, 0), 1.6);
     else if (m === 'top') this.flyTo(new THREE.Vector3(0, 19, 3.2), new THREE.Vector3(0, 0, 0.4), 1.4);
@@ -310,6 +335,27 @@ export class Game {
       this.flyTo(new THREE.Vector3(at.x + 4.0, 6.6, at.z + 7.6), new THREE.Vector3(at.x, 0.4, at.z), 1.4);
     }
     // 'free' → leave camera where it is
+  }
+
+  /** Hand the camera to the auto director (top home, action tracking, idle drift). */
+  setDirector(on: boolean) {
+    this.director = on;
+    this.trackFn = null;
+    this.controls.autoRotate = false;
+    if (on && !this.busy && this.players.length) this.flyOverview();
+  }
+
+  /** Broadcast home: tilted-top view reading the whole board + dice pad. */
+  private flyOverview() {
+    const s = this.camera.aspect < 0.9 ? 1.55 : this.camera.aspect < 1.3 ? 1.2 : 1;
+    this.trackFn = null;
+    this.flyTo(new THREE.Vector3(0, 16.5 * s, 8.5 * s), new THREE.Vector3(0.8, 0, 1.2), 1.5);
+  }
+
+  /** Dice close-up over the velvet pad. */
+  private frameDice() {
+    this.trackFn = null;
+    this.flyTo(new THREE.Vector3(5.6, 4.8, 13.0), new THREE.Vector3(8.8, 0.5, 8.2), 0.8);
   }
 
   private flyTo(pos: THREE.Vector3, tgt: THREE.Vector3, dur: number) {
@@ -374,14 +420,8 @@ export class Game {
 
     const value = 1 + Math.floor(Math.random() * 6);
     player.rolls++;
-    // cinematic: keep dice in frame briefly
-    if (this.cameraMode === 'follow') {
-      const obj = this.tokens.objects.get(player.def.id)!;
-      this.flyTo(
-        new THREE.Vector3((obj.position.x + 9.2) / 2 - 1.5, 7.5, (obj.position.z + 8.6) / 2 + 5.5),
-        new THREE.Vector3(4.2, 0.4, 4.2), 0.7,
-      );
-    }
+    // director: cut to the dice close-up for the throw
+    if (this.director) this.frameDice();
     await this.dice.roll(value);
     this.cb.onDice(value, player);
     this.board.pulse(Math.max(1, player.square));
@@ -449,6 +489,7 @@ export class Game {
       this.fx.landPoof(this.tokenObj(player).position.clone().add(new THREE.Vector3(0, 0.15, 0)), player.def.color);
     }
     this.cb.onProgress();
+    this.trackFn = null; // release the tracking shot before the next beat
 
     if (value === 6 && this.rules.extraOnSix) this.sound.six();
 
@@ -477,7 +518,10 @@ export class Game {
     const p = this.players[this.current];
     this.tokens.setActive(p.def.id);
     this.board.pulse(Math.max(1, p.square), p.def.color);
-    if (this.cameraMode === 'follow') {
+    if (this.director) {
+      // settle home — unless the player just grabbed the camera themselves
+      if (this.elapsed - this.lastInteract > 6) this.flyOverview();
+    } else if (this.cameraMode === 'follow') {
       const obj = this.tokens.objects.get(p.def.id)!;
       this.flyTo(
         new THREE.Vector3(obj.position.x + 4.0, 6.6, obj.position.z + 7.6),
@@ -501,6 +545,11 @@ export class Game {
 
   private async hopAlong(p: PlayerState, from: number, to: number) {
     const obj = this.tokenObj(p);
+    if (this.director) {
+      // tracking shot glued to the hopping champion
+      this.trackFn = () => obj.position.clone();
+      this.trackOff.set(2.6, 3.8, 4.2);
+    }
     const start = from === 0 ? new THREE.Vector3(-6.4, TOP_Y, 6.4) : null;
     if (start) obj.position.copy(start);
     for (let s = from + 1; s <= to; s++) {
@@ -525,6 +574,11 @@ export class Game {
       return;
     }
     this.fx.snakePoof(obj.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
+    if (this.director) {
+      // low dramatic chase down the serpent's back
+      this.trackFn = () => obj.position.clone();
+      this.trackOff.set(3.4, 2.8, 4.8);
+    }
     const dest = this.tokens.tokenPos(tail, this.slotOf(tail, p.def.id));
     const dur = 1.5;
     await tween(dur, (e) => {
@@ -546,6 +600,10 @@ export class Game {
     }
     const dest = this.tokens.tokenPos(top, this.slotOf(top, p.def.id));
     this.fx.ladderSparkle(obj.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+    if (this.director) {
+      this.trackFn = () => obj.position.clone();
+      this.trackOff.set(3.4, 2.8, 4.8);
+    }
     await tween(1.5, (e) => {
       const pt = curve.getPoint(e);
       const wobble = Math.sin(e * Math.PI * 6) * 0.05 * (1 - e);
@@ -561,6 +619,7 @@ export class Game {
   celebrate(winner: PlayerState) {
     const obj = this.tokens.objects.get(winner.def.id);
     if (!obj) return;
+    this.trackFn = null;
     this.flyTo(
       new THREE.Vector3(obj.position.x + 2.8, 3.6, obj.position.z + 4.4),
       new THREE.Vector3(obj.position.x, 1.0, obj.position.z),
