@@ -39,8 +39,11 @@ export interface MatchSnapshot {
   rolls: number[];
   snakes: number[];
   ladders: number[];
+  streaks?: number[];
   current: number;
   turnCount: number;
+  matchRolls?: number;
+  matchSixes?: number;
 }
 
 export type CameraMode = 'cine' | 'follow' | 'top' | 'free';
@@ -625,8 +628,11 @@ export class Game {
       rolls: this.players.map((p) => p.rolls),
       snakes: this.players.map((p) => p.snakes),
       ladders: this.players.map((p) => p.ladders),
+      streaks: this.players.map((p) => p.sixStreak),
       current: this.current,
       turnCount: this.turnCount,
+      matchRolls: this.matchRolls,
+      matchSixes: this.matchSixes,
     };
   }
 
@@ -643,9 +649,12 @@ export class Game {
         p.rolls = (s.rolls?.[i] | 0) || 0;
         p.snakes = (s.snakes?.[i] | 0) || 0;
         p.ladders = (s.ladders?.[i] | 0) || 0;
+        p.sixStreak = Math.max(0, Math.min(2, (s.streaks?.[i] ?? 0) || 0));
       });
       this.current = Math.max(0, Math.min(this.players.length - 1, s.current | 0));
       this.turnCount = Math.max(0, s.turnCount | 0);
+      this.matchRolls = Math.max(0, (s.matchRolls ?? 0) | 0);
+      this.matchSixes = Math.max(0, Math.min(this.matchRolls, ((s.matchSixes ?? 0) | 0) || 0));
       // Distinct slots per square — slotOf() sees all sharers at once after a
       // restore, so it would hand every sharer the SAME slot (overlap).
       // Assign 0..n-1 in seat order per square instead; staging uses seat id.
@@ -921,8 +930,9 @@ export class Game {
       if (g !== this.gen) return;
       this.celebrate(player);
       this.sound.win();
-      this.busy = false;
-      this.cb.onLock(false);
+      // Stay busy + locked through the coronation delay — a roll in the
+      // 900ms gap before the win panel would corrupt the final position.
+      // abandon()/newGame() clear the lock for rematch/quit.
       this.cb.onProgress();
       this.cb.onWin(player, { turns: this.turnCount + 1, rolls: this.matchRolls, sixes: this.matchSixes });
       return;
@@ -975,8 +985,8 @@ export class Game {
       this.trackFn = (out) => out.copy(obj.position);
       this.trackOff.set(2.6, 3.8, 4.2);
     }
-    const start = from === 0 ? new THREE.Vector3(-6.4, TOP_Y, 6.4) : null;
-    if (start) obj.position.copy(start);
+    // Hop from the token's actual staging spot — snapping to a single shared
+    // point would visibly pop fanned-out champions together on their first move.
     for (let s = from + 1; s <= to; s++) {
       if (g !== this.gen) return; // abandoned mid-march: no ghost hops or sounds
       const dest = this.tokens.tokenPos(s, this.slotOf(s, p.def.id));

@@ -214,6 +214,8 @@ export function buildDice(
     roll(value: number) {
       if (anim) return Promise.resolve();
       idle = false;
+      nudgeT = null;
+      mesh.scale.set(1, 1, 1);
       // a fresh random landing spot on the velvet every throw
       const a = Math.random() * Math.PI * 2;
       const r = Math.sqrt(Math.random()) * 0.75;

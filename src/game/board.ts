@@ -233,6 +233,9 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
       if (n === null) {
         goalRing.visible = false;
         goalBeacon.visible = false;
+        // Classic voyage — the square-100 crown is the prize.
+        beacon.visible = true;
+        crown.visible = true;
         return;
       }
       const { x, z } = cellCenter(n);
@@ -240,6 +243,9 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
       goalRing.visible = true;
       goalBeacon.position.set(x, TOP_Y + 1.1, z);
       goalBeacon.visible = true;
+      // Swift voyage ends at 50 — the unreachable square-100 crown would mislead.
+      beacon.visible = false;
+      crown.visible = false;
     },
     update(t: number, dt: number) {
       beacon.rotation.y += dt * 0.8;

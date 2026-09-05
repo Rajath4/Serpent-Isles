@@ -50,6 +50,7 @@ let matchStart = Date.now();
 let lastTurnName = '';
 let lastTurnWasCpu = false;
 let matchLive = false;
+let matchOver = false;
 let scoutShown = false;
 // drama trackers: leader crown-holder + who has smelled the finish
 let dramaLeader = -1;
@@ -217,6 +218,8 @@ function updateRace() {
     d.classList.toggle('leader', !!pl && pl.square === best && best > 0);
   });
   $('round').textContent = `Round ${roundOf()}`;
+  const legend = $('race-legend');
+  if (legend) legend.innerHTML = `<span>🟡 ladder</span><span>🔴 serpent</span><span>👑 ${goal}</span>`;
 }
 
 // ── confetti ───────────────────────────────────────────────────────────────
@@ -392,6 +395,7 @@ const game = new Game(canvas, sound, {
     } else if (kind === 'good') buzz(35);
   },
   onWin: (winner, stats) => {
+    matchOver = true;
     clearCpuTimer();
     clearSave();
     recordWin(game.players, winner);
@@ -798,6 +802,7 @@ function enterMatch(
   clearCpuTimer();
   renderPlayerCards(names, cpu);
   resetMatchChrome();
+  matchOver = false;
   $('setup').classList.add('hidden');
   $('win').classList.add('hidden');
   $('pause').classList.add('hidden');
@@ -822,6 +827,7 @@ function enterMatch(
   const active = game.activePlayer;
   btn.disabled = !active || active.isCPU;
   btn.classList.toggle('attention', !!active && !active.isCPU);
+  btn.querySelector('.roll-label')!.textContent = 'ROLL DICE';
   updateRace();
 }
 
@@ -833,6 +839,7 @@ function restartMatch() {
 
 function quitToMenu() {
   clearCpuTimer();
+  matchOver = false;
   game.abandon(); // orphan any live turn — no ghost moves on the menu's watch
   $('pause').classList.add('hidden');
   $('win').classList.add('hidden');
@@ -869,6 +876,7 @@ $('btn-resume').addEventListener('click', () => {
 
 // ── input: dice, shortcuts, pause ────────────────────────────────────────────
 function doRoll() {
+  if (matchOver) return; // coronation in flight — the final position is sealed
   if (game.activePlayer?.isCPU) return; // humans can't roll for silicon sailors
   sound.unlock();
   ($('btn-roll') as HTMLButtonElement).classList.remove('attention');
@@ -876,6 +884,7 @@ function doRoll() {
 }
 /** CPU drivers roll through here — same throw, no human gate. */
 function doAutoRoll() {
+  if (matchOver) return;
   sound.unlock();
   void game.rollDice();
 }
@@ -886,6 +895,7 @@ $('btn-roll').addEventListener('click', doRoll);
 function openPause() {
   if (!$('setup').classList.contains('hidden')) return; // no match to pause
   if (!$('win').classList.contains('hidden')) return;
+  if (matchOver) return; // coronation in flight — let the win panel land
   if (!$('help').classList.contains('hidden')) $('help').classList.add('hidden');
   clearCpuTimer(); // freeze silicon sailors mid-ponder
   disarmRestart();
