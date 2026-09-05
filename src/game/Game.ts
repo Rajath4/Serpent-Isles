@@ -67,10 +67,6 @@ interface Tween {
   done: () => void;
 }
 
-const tween = (dur: number, tick: (e: number) => void) =>
-  new Promise<void>((resolve) => {
-    tweens.push({ t: 0, dur, tick, done: resolve });
-  });
 const tweens: Tween[] = [];
 
 export class Game {
@@ -131,6 +127,9 @@ export class Game {
   matchRolls = 0;
   matchSixes = 0;
   busy = false;
+  /** Match generation — bumped on every newGame/abandon so orphaned async
+   *  turn chains (restart mid-roll) die quietly instead of corrupting the fresh match. */
+  private gen = 0;
   cameraMode: CameraMode = 'cine';
   private camTween: { t: number; dur: number; p0: THREE.Vector3; p1: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3 } | null = null;
   private elapsed = 0;
@@ -458,6 +457,8 @@ export class Game {
 
   // ── setup ────────────────────────────────────────────────────────────────
   newGame(names: string[], rules: Rules, cpu: boolean[] = [], firstLog = true) {
+    // orphan any live turn first — a restart mid-roll must not haunt the fresh match
+    this.abandon();
     this.rules = { ...rules };
     this.goal = this.rules.swift ? GOAL_SWIFT : GOAL_CLASSIC;
     this.turnCount = 0;
@@ -654,11 +655,36 @@ export class Game {
     return sharing % 4;
   }
 
+  /** Generation-aware tween: stale matches animate nothing, but still resolve
+   *  so orphaned chains reach their abandon checks instead of hanging. */
+  private tween(dur: number, tick: (e: number) => void) {
+    const g = this.gen;
+    return new Promise<void>((resolve) => {
+      tweens.push({
+        t: 0,
+        dur,
+        tick: (e) => {
+          if (g === this.gen) tick(e);
+        },
+        done: resolve,
+      });
+    });
+  }
+
+  /** Abandon the live turn (quit to menu): stale async chains die quietly. */
+  abandon() {
+    this.gen++;
+    this.busy = false;
+    this.trackFn = null;
+    this.dice.cancel();
+  }
+
   // ── core turn ────────────────────────────────────────────────────────────
   async rollDice(): Promise<void> {
     if (this.busy || !this.players.length) return;
     const player = this.players[this.current];
     this.busy = true;
+    const g = this.gen; // abandon checkpoint — stale chains bail at every await below
     this.cb.onLock(true);
     this.sound.dice();
 
@@ -674,11 +700,16 @@ export class Game {
       this.sound.charge();
       await this.waitForCamera(0.3);
     }
-    setTimeout(() => this.sound.whoosh(), 280); // meets the launch mid-shiver
+    if (g !== this.gen) return; // restarted during the camera glide — no phantom throw
+    setTimeout(() => {
+      if (g === this.gen) this.sound.whoosh();
+    }, 280); // meets the launch mid-shiver
     await this.dice.roll(value);
+    if (g !== this.gen) return; // restarted mid-throw — the fresh match owns the board
     this.cb.onDice(value, player);
     this.board.pulse(Math.max(1, player.square));
     await this.wait(420);
+    if (g !== this.gen) return;
 
     // third consecutive six → forfeit move (classic rule)
     if (value === 6) {
@@ -687,6 +718,7 @@ export class Game {
         this.cb.onLog(`🎲 ${player.name} rolled a third straight 6 — turn skipped!`, 'bad');
         player.sixStreak = 0;
         await this.wait(500);
+        if (g !== this.gen) return;
         return this.endTurn(false);
       }
     } else {
@@ -712,6 +744,7 @@ export class Game {
     }
 
     await this.hopAlong(player, player.square, target);
+    if (g !== this.gen) return;
     player.square = target;
     this.board.pulse(target);
 
@@ -723,7 +756,9 @@ export class Game {
       this.sound.snake();
       this.board.pulse(tail, 0xff3d5a);
       await this.wait(350);
+      if (g !== this.gen) return;
       await this.slideAlong(player, target, tail);
+      if (g !== this.gen) return;
       player.square = tail;
     } else if (LADDERS[target] !== undefined) {
       player.ladders++;
@@ -732,7 +767,9 @@ export class Game {
       this.sound.ladder();
       this.board.pulse(top, 0xffd76e);
       await this.wait(350);
+      if (g !== this.gen) return;
       await this.climbAlong(player, target, top);
+      if (g !== this.gen) return;
       player.square = top;
     } else {
       this.cb.onLog(
@@ -748,6 +785,7 @@ export class Game {
 
     // victory
     if (player.square >= this.goal) {
+      if (g !== this.gen) return;
       this.celebrate(player);
       this.sound.win();
       this.busy = false;
@@ -797,6 +835,7 @@ export class Game {
   }
 
   private async hopAlong(p: PlayerState, from: number, to: number) {
+    const g = this.gen;
     const obj = this.tokenObj(p);
     if (this.director) {
       // tracking shot glued to the hopping champion
@@ -806,10 +845,11 @@ export class Game {
     const start = from === 0 ? new THREE.Vector3(-6.4, TOP_Y, 6.4) : null;
     if (start) obj.position.copy(start);
     for (let s = from + 1; s <= to; s++) {
+      if (g !== this.gen) return; // abandoned mid-march: no ghost hops or sounds
       const dest = this.tokens.tokenPos(s, this.slotOf(s, p.def.id));
       const src = obj.position.clone();
       this.sound.hop(s);
-      await tween(0.24, (e) => {
+      await this.tween(0.24, (e) => {
         obj.position.lerpVectors(src, dest, e);
         obj.position.y = THREE.MathUtils.lerp(src.y, dest.y, e) + Math.sin(e * Math.PI) * 0.55;
       });
@@ -820,6 +860,7 @@ export class Game {
   }
 
   private async slideAlong(p: PlayerState, head: number, tail: number) {
+    const g = this.gen;
     const obj = this.tokenObj(p);
     const curve = this.snakes.curveOf(head);
     if (!curve) {
@@ -834,17 +875,20 @@ export class Game {
     }
     const dest = this.tokens.tokenPos(tail, this.slotOf(tail, p.def.id));
     const dur = 1.5;
-    await tween(dur, (e) => {
+    await this.tween(dur, (e) => {
       const pt = curve.getPoint(e);
       obj.position.lerpVectors(pt, dest, e * e * 0.25);
       obj.position.y = pt.y + 0.25 + Math.sin(e * Math.PI) * 0.15;
     });
+    if (g !== this.gen) return;
     obj.position.copy(dest);
     this.fx.ring(dest, p.def.color, 1.2, 0.6);
+    this.sound.thud();
     this.cb.onProgress();
   }
 
   private async climbAlong(p: PlayerState, foot: number, top: number) {
+    const g = this.gen;
     const obj = this.tokenObj(p);
     const curve = this.ladders.curveOf(foot);
     if (!curve) {
@@ -857,14 +901,16 @@ export class Game {
       this.trackFn = (out) => out.copy(obj.position);
       this.trackOff.set(3.4, 2.8, 4.8);
     }
-    await tween(1.5, (e) => {
+    await this.tween(1.5, (e) => {
       const pt = curve.getPoint(e);
       const wobble = Math.sin(e * Math.PI * 6) * 0.05 * (1 - e);
       obj.position.set(pt.x + wobble, pt.y + 0.32, pt.z);
       if (e > 0.92) obj.position.lerp(dest, (e - 0.92) / 0.08);
     });
+    if (g !== this.gen) return;
     obj.position.copy(dest);
     this.fx.ladderSparkle(dest.clone().add(new THREE.Vector3(0, 0.4, 0)));
+    this.sound.ding();
     this.cb.onProgress();
   }
 

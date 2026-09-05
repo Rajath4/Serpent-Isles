@@ -320,6 +320,7 @@ const game = new Game(canvas, sound, {
     lastWin = { name: winner.name, turns: stats.turns };
     setTimeout(() => {
       $('win').classList.remove('hidden');
+      $('btn-rematch').focus({ preventScroll: true });
       if (!REDUCED) {
         burstConfetti(260);
         setTimeout(() => burstConfetti(160), 900);
@@ -687,6 +688,7 @@ function restartMatch() {
 
 function quitToMenu() {
   clearCpuTimer();
+  game.abandon(); // orphan any live turn — no ghost moves on the menu's watch
   $('pause').classList.add('hidden');
   $('win').classList.add('hidden');
   $('hover-chip').classList.add('hidden');
@@ -897,9 +899,16 @@ $('btn-sound').addEventListener('click', (e) => {
   btn.textContent = muted ? '🔇' : '🔊';
   btn.classList.toggle('on', !muted);
 });
+// restore persisted mute state (SoundBank read it at construction)
+{
+  const btn = $('btn-sound') as HTMLButtonElement;
+  btn.textContent = sound.muted ? '🔇' : '🔊';
+  btn.classList.toggle('on', !sound.muted);
+}
 $('btn-help').addEventListener('click', () => {
   sound.click();
   $('help').classList.remove('hidden');
+  $('btn-close-help').focus({ preventScroll: true });
 });
 $('btn-close-help').addEventListener('click', () => {
   sound.click();
@@ -941,9 +950,16 @@ $('btn-share').addEventListener('click', async () => {
   }
 });
 
-// hover ticks
-document.querySelectorAll('button').forEach((b) => {
-  b.addEventListener('mouseenter', () => sound.hover(), { passive: true });
+// hover ticks — delegated so dynamically-built buttons (CPU seats, etc.) sing too
+let lastHoverBtn: HTMLElement | null = null;
+document.addEventListener('mouseover', (e) => {
+  const b = (e.target as HTMLElement | null)?.closest?.('button') ?? null;
+  if (b && b !== lastHoverBtn) {
+    lastHoverBtn = b;
+    sound.hover();
+  } else if (!b) {
+    lastHoverBtn = null;
+  }
 });
 
 // loader out

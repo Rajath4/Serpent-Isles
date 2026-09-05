@@ -6,7 +6,16 @@ export class SoundBank {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private ambientNodes: AudioNode[] = [];
+  private unlocked = false;
   muted = false;
+
+  constructor() {
+    try {
+      this.muted = localStorage.getItem('serpent-muted') === '1';
+    } catch {
+      /* private mode — sound on */
+    }
+  }
 
   private ensure(): AudioContext | null {
     try {
@@ -14,7 +23,7 @@ export class SoundBank {
         const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         this.ctx = new AC();
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.55;
+        this.master.gain.value = this.muted ? 0 : 0.55;
         this.master.connect(this.ctx.destination);
       }
       if (this.ctx.state === 'suspended') void this.ctx.resume();
@@ -25,14 +34,25 @@ export class SoundBank {
   }
 
   unlock() {
+    this.unlocked = true;
     this.ensure();
   }
 
   setMuted(m: boolean) {
     this.muted = m;
+    try {
+      localStorage.setItem('serpent-muted', m ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(m ? 0 : 0.55, this.ctx.currentTime, 0.05);
     }
+  }
+
+  hover() {
+    if (!this.unlocked) return; // never conjure a context pre-gesture
+    this.tone(880, 0.04, 'sine', 0.06);
   }
 
   private tone(freq: number, dur: number, type: Osc = 'sine', vol = 0.25, when = 0, slideTo?: number) {
@@ -75,7 +95,6 @@ export class SoundBank {
   }
 
   click() { this.tone(660, 0.07, 'triangle', 0.16); }
-  hover() { this.tone(880, 0.04, 'sine', 0.06); }
 
   dice() {
     for (let i = 0; i < 6; i++) this.noise(0.06, 0.22, i * 0.055, 3200);
@@ -110,6 +129,18 @@ export class SoundBank {
   settleClick() {
     this.tone(520, 0.06, 'triangle', 0.14);
     this.noise(0.03, 0.08, 0, 4000);
+  }
+
+  /** Serpent landing thud at the tail. */
+  thud() {
+    this.tone(140, 0.18, 'triangle', 0.22, 0, 90);
+    this.noise(0.08, 0.12, 0, 900);
+  }
+
+  /** Sky-ladder arrival chime. */
+  ding() {
+    this.tone(880, 0.25, 'sine', 0.16);
+    this.tone(1320, 0.3, 'sine', 0.08, 0.06);
   }
 
   hop(step: number) {

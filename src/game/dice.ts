@@ -81,6 +81,8 @@ export interface DiceHandles {
   roll: (value: number) => Promise<void>;
   /** A playful hop when the player hovers ROLL — delight before the throw. */
   nudge: () => void;
+  /** Silently abandon a live throw (match restarted mid-flight). */
+  cancel: () => void;
   update: (t: number, dt: number) => void;
   setIdle: (on: boolean) => void;
 }
@@ -234,6 +236,17 @@ export function buildDice(
       if (anim || nudgeT !== null || !idle) return;
       idle = false;
       nudgeT = 0;
+    },
+    cancel() {
+      // abandon a live throw silently (match restarted mid-flight) — the
+      // orphaned roll promise resolves and its chain dies on the generation check
+      if (!anim) return;
+      const r = anim.resolve;
+      anim = null;
+      idle = true;
+      mesh.position.copy(rest);
+      mesh.scale.set(1, 1, 1);
+      r();
     },
     update(_t: number, dt: number) {
       // impact flash exhales every frame while alive
