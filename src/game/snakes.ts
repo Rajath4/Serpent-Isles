@@ -270,98 +270,136 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     group.add(spikes);
     entry.spikes = spikes;
 
-    // — beaded tail rattle —
+    // — beaded tail tip marching PAST the tube end, capping the hollow —
     const tailMat = track(entry, new THREE.MeshStandardMaterial({ color: pal.pattern, roughness: 0.4, metalness: 0.3 }));
-    [0.72, 0.56, 0.42].forEach((s, k) => {
+    [0.8, 0.62, 0.45, 0.3].forEach((s, k) => {
       const bead = new THREE.Mesh(new THREE.SphereGeometry(radius * s, 10, 8), tailMat);
-      bead.position.copy(p3).add(new THREE.Vector3(-dir.x * k * radius * 1.1, 0.02 + k * 0.012, -dir.z * k * radius * 1.1));
+      bead.position.copy(p3).add(new THREE.Vector3(
+        dir.x * (k + 0.4) * radius * 1.15, 0.015, dir.z * (k + 0.4) * radius * 1.15,
+      ));
       bead.castShadow = true;
       group.add(bead);
     });
 
-    // — sculpted head: cranium + tapered snout + brow + fangs + hood —
+    // — sculpted head: ONE continuous lathe-turned predator skull —
+    // (neck → cheek bulge → tapered snout → round nose), flattened like a real viper.
     const hg = entry.headGroup;
     const skullMat = track(entry, new THREE.MeshPhysicalMaterial({
-      color: pal.body, roughness: 0.3, metalness: 0.1,
-      clearcoat: 1, clearcoatRoughness: 0.2, envMapIntensity: 1.0,
+      color: pal.body, roughness: 0.32, metalness: 0.08,
+      clearcoat: 1, clearcoatRoughness: 0.22, envMapIntensity: 1.0,
     }));
-    const cranium = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.7, 20, 16), skullMat);
-    cranium.scale.set(1, 0.92, 1.15);
-    cranium.castShadow = true;
-    hg.add(cranium);
+    const prof: Array<[number, number]> = [
+      [1.06, -0.45], [1.05, -0.15], [1.0, 0.1], [1.12, 0.55], [1.18, 1.0], [1.02, 1.6],
+      [0.82, 2.2], [0.58, 2.75], [0.32, 3.15], [0.1, 3.42], [0.02, 3.5],
+    ];
+    const skullGeo = new THREE.LatheGeometry(
+      prof.map(([x, y]) => new THREE.Vector2(x * radius, y * radius)), 20,
+    );
+    skullGeo.rotateX(Math.PI / 2); // long axis → +Z (snout forward)
+    const skull = new THREE.Mesh(skullGeo, skullMat);
+    skull.scale.set(1, 0.7, 1); // dorsoventral flatten — the snake-head wedge
+    skull.castShadow = true;
+    hg.add(skull);
 
-    // cobra hood — two layered shells fanning behind the skull
-    const hoodOuter = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.9, 18, 14), track(entry, new THREE.MeshPhysicalMaterial({
-      color: pal.pattern, roughness: 0.42, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.35,
-    })));
-    hoodOuter.scale.set(1.35, 1.5, 0.5);
-    hoodOuter.position.set(0, radius * 0.5, -radius * 1.5);
-    hoodOuter.castShadow = true;
-    hg.add(hoodOuter);
-    const hoodInner = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.45, 16, 12), track(entry, new THREE.MeshStandardMaterial({
-      color: pal.belly, roughness: 0.55,
-    })));
-    hoodInner.scale.set(1.05, 1.2, 0.42);
-    hoodInner.position.set(0, radius * 0.45, -radius * 1.32);
-    hg.add(hoodInner);
+    // cobra hood on a few individuals only — variety reads natural, not cloned
+    if ([0, 4, 7].includes(i)) {
+      const hoodMat = track(entry, new THREE.MeshPhysicalMaterial({
+        color: pal.pattern, roughness: 0.42, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.35,
+      }));
+      const hoodInnerMat = track(entry, new THREE.MeshStandardMaterial({ color: pal.belly, roughness: 0.55 }));
+      const hood = new THREE.Group();
+      const outer = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 14), hoodMat);
+      outer.scale.set(1.6, 2.0, 0.55);
+      outer.castShadow = true;
+      hood.add(outer);
+      const inner = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), hoodInnerMat);
+      inner.scale.set(1.24, 1.6, 0.45);
+      inner.position.z = 0.16 * radius;
+      hood.add(inner);
+      // spectacle markings on the back of the hood
+      [-1, 1].forEach((s) => {
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.2 * radius, 10, 8), hoodInnerMat);
+        dot.scale.set(1, 1.3, 0.4);
+        dot.position.set(s * 0.55 * radius, 0.55 * radius, -0.52 * radius);
+        hood.add(dot);
+      });
+      hood.position.set(0, 0.1 * radius, -0.85 * radius);
+      hood.rotation.x = -0.3; // flares back off the neck
+      hg.add(hood);
+    }
 
-    // tapered snout + nostrils
-    const snout = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.05, 16, 12), skullMat);
-    snout.scale.set(0.85, 0.62, 1.1);
-    snout.position.set(0, -radius * 0.25, radius * 1.55);
-    snout.castShadow = true;
-    hg.add(snout);
+    // nostrils ride high on the snout tip, as on a real snake
     const nostrilMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x140a08, roughness: 0.6 }));
     [-1, 1].forEach((s) => {
-      const n = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.14, 8, 6), nostrilMat);
-      n.position.set(s * radius * 0.42, -radius * 0.05, radius * 2.35);
+      const n = new THREE.Mesh(new THREE.SphereGeometry(0.08 * radius, 8, 6), nostrilMat);
+      n.position.set(s * 0.22 * radius, 0.3 * radius, 2.95 * radius);
       hg.add(n);
     });
 
-    // jeweled amber eyes with slit pupils
+    // eyes set INTO socket rings under brow ridges — never glued on top
+    const socketMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x1c100c, roughness: 0.55 }));
     const eyeMat = track(entry, new THREE.MeshStandardMaterial({
       color: 0x2a1500, emissive: 0xffae00, emissiveIntensity: 2.2, roughness: 0.15,
-    }), 1);
+    }));
     entry.eyeMats.push(eyeMat);
     const pupilMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x0a0605, roughness: 0.25 }));
     [-1, 1].forEach((s) => {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.46, 12, 10), eyeMat);
-      e.position.set(s * radius * 1.05, radius * 0.85, radius * 0.75);
+      const socket = new THREE.Mesh(new THREE.TorusGeometry(0.34 * radius, 0.11 * radius, 8, 18), socketMat);
+      socket.position.set(s * 1.0 * radius, 0.55 * radius, 1.32 * radius);
+      socket.rotation.y = s * 0.55;
+      hg.add(socket);
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.3 * radius, 14, 12), eyeMat);
+      e.position.set(s * 0.95 * radius, 0.55 * radius, 1.35 * radius);
       hg.add(e);
-      const p = new THREE.Mesh(new THREE.BoxGeometry(radius * 0.1, radius * 0.42, radius * 0.12), pupilMat);
-      p.position.set(s * radius * 1.05, radius * 0.87, radius * 1.14);
-      p.rotation.y = s * 0.35;
+      const p = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08 * radius, 0.3 * radius, 0.1 * radius), pupilMat,
+      );
+      p.position.set(s * 1.04 * radius, 0.57 * radius, 1.6 * radius);
+      p.rotation.y = s * 0.33;
       hg.add(p);
+      const brow = new THREE.Mesh(new THREE.SphereGeometry(0.32 * radius, 12, 10), skullMat);
+      brow.scale.set(1.3, 0.45, 0.9);
+      brow.position.set(s * 0.72 * radius, 0.62 * radius, 1.55 * radius);
+      brow.rotation.y = -s * 0.3;
+      hg.add(brow);
     });
 
-    // fangs
+    // fangs tucked under the snout — a hint, not tusks
     const fangMat = track(entry, new THREE.MeshStandardMaterial({ color: 0xfff6e6, roughness: 0.2, metalness: 0.05 }));
     [-1, 1].forEach((s) => {
-      const f = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.13, radius * 0.55, 8), fangMat);
-      f.position.set(s * radius * 0.5, -radius * 0.75, radius * 2.05);
-      f.rotation.x = Math.PI;
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.09 * radius, 0.45 * radius, 8), fangMat);
+      f.position.set(s * 0.4 * radius, -0.35 * radius, 2.7 * radius);
+      f.rotation.x = Math.PI - 0.12;
       hg.add(f);
     });
 
-    // forked tongue
-    const tongueMat = new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: 0xaa0022, emissiveIntensity: 0.9 });
-    const fork = new THREE.Mesh(new THREE.BoxGeometry(radius * 0.22, radius * 0.08, radius * 1.1), tongueMat);
-    fork.position.set(0, -radius * 0.55, radius * 2.6);
+    // slim forked tongue
+    const tongueMat = track(entry, new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: 0xaa0022, emissiveIntensity: 0.9 }));
+    const fork = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14 * radius, 0.05 * radius, 0.9 * radius), tongueMat,
+    );
+    fork.position.set(0, -0.3 * radius, 3.7 * radius);
     hg.add(fork);
     [-1, 1].forEach((s) => {
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.09, radius * 0.6, 6), tongueMat);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07 * radius, 0.5 * radius, 6), tongueMat);
       tip.rotation.x = Math.PI / 2;
-      tip.rotation.y = s * -0.3;
-      tip.position.set(s * radius * 0.22, -radius * 0.55, radius * 3.3);
+      tip.position.set(s * 0.16 * radius, -0.3 * radius, 4.35 * radius);
       hg.add(tip);
       entry.tongueTips.push(tip);
     });
 
-    // Stance: prowl forward, away from the body — a rearing cobra surveys
-    // outward, never down its own neck. Gaze sits near-horizontal, like a real cobra.
+    // Stance: prowling forward off the neck — the head base sits AT tube height
+    // so skull collar + throat bulge swallow the tube start: the joint can never gape.
     const outward = curve.getTangent(0).setY(0).normalize().negate();
-    hg.position.set(a.x + outward.x * radius * 1.1, BODY_Y + 0.36, a.z + outward.z * radius * 1.1);
-    hg.lookAt(a.x + outward.x * 4, BODY_Y + 0.12, a.z + outward.z * 4);
+    const throat = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.04, 14, 12), skullMat);
+    throat.position.copy(p0);
+    throat.scale.set(1, 0.85, 1.3);
+    throat.lookAt(p0.clone().add(outward));
+    throat.castShadow = true;
+    group.add(throat);
+
+    hg.position.set(a.x, BODY_Y + 0.2, a.z);
+    hg.lookAt(a.x + outward.x * 4, BODY_Y + 0.55, a.z + outward.z * 4);
     group.add(hg);
 
     // warning glow on the strike square
@@ -400,7 +438,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       if (mode === 'hidden') return;
       for (const e of entries) {
         const active = spot === null || spot === e.head;
-        e.headGroup.position.y = BODY_Y + 0.36 + (active ? Math.sin(t * 2 + e.phase) * 0.03 : 0);
+        e.headGroup.position.y = BODY_Y + 0.2 + (active ? Math.sin(t * 2 + e.phase) * 0.03 : 0);
         e.headGroup.rotation.z = active ? Math.sin(t * 1.4 + e.phase) * 0.07 : 0;
         const flick = 0.7 + (Math.sin(t * 5 + e.phase) * 0.5 + 0.5) * 0.5;
         for (const tip of e.tongueTips) tip.scale.y = flick;
