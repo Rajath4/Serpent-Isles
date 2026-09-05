@@ -38,6 +38,7 @@ export class Effects {
   private particles: Particle[] = [];
   private rings: Ring[] = [];
   private tex: THREE.Texture;
+  private scratch = new THREE.Vector3();
 
   constructor(private scene: THREE.Scene) {
     this.tex = makeGlowTexture();
@@ -78,7 +79,9 @@ export class Effects {
       p.size = size * (0.7 + Math.random() * 0.7);
       p.gravity = gravity;
       p.spr.visible = true;
-      p.spr.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.2, Math.random() * 0.15, (Math.random() - 0.5) * 0.2));
+      p.spr.position.copy(pos).add(
+        this.scratch.set((Math.random() - 0.5) * 0.2, Math.random() * 0.15, (Math.random() - 0.5) * 0.2),
+      );
       const a = Math.random() * Math.PI * 2;
       const r = speed * (0.35 + Math.random() * 0.85);
       p.vel.set(Math.cos(a) * r, up * (0.5 + Math.random()), Math.sin(a) * r);

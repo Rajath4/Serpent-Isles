@@ -47,6 +47,10 @@ export function detectQuality(): QualityTier {
     const canvas = document.createElement('canvas');
     const gl2 = !!canvas.getContext('webgl2');
     if (!gl2) return 'low';
+    // Software rasterizers must never carry full detail — check BEFORE the
+    // core-count fast path, or a SwiftShader desktop with 8 cores gets 'high'.
+    const gpuEarly = glRendererName().toLowerCase();
+    if (/swiftshader|llvmpipe|software|basic render|gdi generic/i.test(gpuEarly)) return 'low';
     const coarse =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(pointer: coarse)').matches;
@@ -55,18 +59,15 @@ export function detectQuality(): QualityTier {
     if (coarse && (cores <= 4 || (mem > 0 && mem <= 4))) return 'low';
     if (!coarse && cores >= 8 && (mem === 0 || mem >= 8)) return 'high';
     // fall through to GPU-string evidence below before settling on balanced
+    const gpu = gpuEarly || glRendererName().toLowerCase();
+    // museum-piece mobile GPUs: kindness is low poly
+    if (/mali-t|mali-4|adreno \([34]|adreno [34]|powervr sgx|videocore iv/i.test(gpu)) return 'low';
+    // desktop-class Apple Silicon sails cinematic (mobile Apple stays heuristic — thermals)
+    if (/mac/i.test(navigator.userAgent) && /apple (m[1-9]|a1[6-9])|apple gpu/i.test(gpu)) return 'high';
+    return 'balanced';
   } catch {
     return 'balanced';
   }
-  const gpu = glRendererName().toLowerCase();
-  // software rasterizers must never carry full detail — instant slideshow
-  // (real ANGLE-on-Metal/Vulkan strings never contain these tokens)
-  if (/swiftshader|llvmpipe|software|basic render|gdi generic/i.test(gpu)) return 'low';
-  // museum-piece mobile GPUs: kindness is low poly
-  if (/mali-t|mali-4|adreno \([34]|adreno [34]|powervr sgx|videocore iv/i.test(gpu)) return 'low';
-  // desktop-class Apple Silicon sails cinematic (mobile Apple stays heuristic — thermals)
-  if (/mac/i.test(navigator.userAgent) && /apple (m[1-9]|a1[6-9])|apple gpu/i.test(gpu)) return 'high';
-  return 'balanced';
 }
 
 /** Read the real GPU string, then release the probe context immediately. */

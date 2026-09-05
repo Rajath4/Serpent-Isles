@@ -1,5 +1,6 @@
-// Serpent Isles offline shell — cache-first for same-origin GETs.
-const CACHE = 'serpent-isles-v1';
+// Serpent Isles offline shell — network-first for navigations (fresh deploys),
+// cache-first for versioned assets (offline play).
+const CACHE = 'serpent-isles-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,6 +32,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (!sameOrigin) return;
+  const isNavigate =
+    req.mode === 'navigate' ||
+    (req.headers.get('accept') || '').includes('text/html');
+  if (isNavigate) {
+    // Fresh HTML when online, last-known shell when offline.
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE).then((cache) => cache.put('./index.html', copy)).catch(() => undefined);
+          }
+          return res;
+        })
+        .catch(() => caches.match('./index.html').then((hit) => hit ?? caches.match(req))),
+    );
+    return;
+  }
   event.respondWith(
     caches.match(req, { ignoreSearch: false }).then(
       (hit) =>

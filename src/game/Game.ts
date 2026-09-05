@@ -476,7 +476,9 @@ export class Game {
   /** Live render stats for the pause-menu readout. */
   stats() {
     const info = this.renderer.info;
-    return { tier: Q.tier, calls: info.render.calls, tris: info.render.triangles };
+    // tier = boot quality; governor = live trim (0 full · 1 balanced · 2 swift).
+    // The pause line combines both so the readout never lies about a step-down.
+    return { tier: Q.tier, governor: this.perfTier, calls: info.render.calls, tris: info.render.triangles };
   }
 
   /** GPU identity line for the pause-menu readout. */
@@ -649,7 +651,8 @@ export class Game {
       );
       const cur = this.players[this.current];
       this.tokens.setActive(cur.def.id);
-      this.cb.onLog(`⛵ Voyage resumed — ${cur.name} to roll (round ${this.turnCount + 1}).`, 'info');
+      const round = Math.floor(this.turnCount / Math.max(1, this.players.length)) + 1;
+      this.cb.onLog(`⛵ Voyage resumed — ${cur.name} to roll (round ${round}).`, 'info');
       this.cb.onTurn(cur, this.current);
       this.cb.onProgress();
       return true;
@@ -708,9 +711,12 @@ export class Game {
    * Resolve once the camera has (nearly) arrived — `lead` seconds early so an
    * action's anticipation beat can play out exactly as the lens locks.
    * Resolves instantly when the camera is already framed: never dead air.
+   * Generation-aware: a restart mid-glide bails immediately instead of
+   * holding the orphaned turn chain hostage for the full flight.
    */
-  private async waitForCamera(lead = 0): Promise<void> {
+  private async waitForCamera(lead = 0, gen = this.gen): Promise<void> {
     while (this.camTween && this.camTween.dur - this.camTween.t > lead) {
+      if (gen !== this.gen) return;
       await new Promise((r) => setTimeout(r, 30));
     }
   }
@@ -808,7 +814,7 @@ export class Game {
       // the launch the instant the frame settles. Already framed? No wait at all.
       this.frameDice();
       this.sound.charge();
-      await this.waitForCamera(0.3);
+      await this.waitForCamera(0.3, g);
     }
     if (g !== this.gen) return; // restarted during the camera glide — no phantom throw
     // the roller gets a pulse — all eyes on the actor (reads position, zero alloc)

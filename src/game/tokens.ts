@@ -125,8 +125,12 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
   const tokenPos = (square: number, slot: number) => {
     const { x, z } = cellCenter(Math.max(0, square));
     const { dx, dz } = stackOffset(slot);
-    const same = square < 1 ? { dx: 0, dz: 0 } : { dx, dz };
-    return new THREE.Vector3(x + same.dx, TOP_Y, z + same.dz);
+    // Staging (square 0) fans out too — 4 champions stacked exactly would z-fight.
+    if (square < 1) {
+      const s = stackOffset(slot);
+      return new THREE.Vector3(x + s.dx * 1.4, TOP_Y, z + s.dz * 1.4);
+    }
+    return new THREE.Vector3(x + dx, TOP_Y, z + dz);
   };
 
   return {

@@ -62,17 +62,16 @@ function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number,
 /** Quaternion that puts value v on top. Materials: [px:1, nx:6, py:2, ny:5, pz:3, nz:4] */
 function faceQuaternion(v: number, extraYaw: number): THREE.Quaternion {
   const e = new THREE.Euler();
-  if (v === 2) e.set(0, extraYaw, 0);
-  else if (v === 5) e.set(Math.PI, extraYaw, 0);
+  if (v === 2) e.set(0, 0, 0);
+  else if (v === 5) e.set(Math.PI, 0, 0);
   else if (v === 1) e.set(0, 0, Math.PI / 2);
   else if (v === 6) e.set(0, 0, -Math.PI / 2);
   else if (v === 3) e.set(-Math.PI / 2, 0, 0);
   else e.set(Math.PI / 2, 0, 0);
-  if (v === 1 || v === 6 || v === 3 || v === 4) {
-    const yaw = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, extraYaw, 0));
-    return yaw.multiply(new THREE.Quaternion().setFromEuler(e));
-  }
-  return new THREE.Quaternion().setFromEuler(e);
+  // Uniform yaw: spin around world-Y after the face-up rotation so every
+  // value keeps its top face up with a fresh random heading.
+  const yaw = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, extraYaw, 0));
+  return yaw.multiply(new THREE.Quaternion().setFromEuler(e));
 }
 
 export interface DiceHandles {

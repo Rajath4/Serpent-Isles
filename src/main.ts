@@ -184,6 +184,11 @@ function syncDrama() {
 }
 
 /** Slide the race-tracker dots. */
+function roundOf(): number {
+  const n = Math.max(1, game.players.length);
+  return Math.floor(game.turnCount / n) + 1;
+}
+
 function updateRace() {
   const track = $('race-track');
   const goal = game.goal;
@@ -205,7 +210,7 @@ function updateRace() {
     const pl = game.players.find((x) => x.def.id === id);
     d.classList.toggle('leader', !!pl && pl.square === best && best > 0);
   });
-  $('round').textContent = `Round ${game.turnCount + 1}`;
+  $('round').textContent = `Round ${roundOf()}`;
 }
 
 // ── confetti ───────────────────────────────────────────────────────────────
@@ -215,8 +220,10 @@ let confettiParts: Array<{ x: number; y: number; vx: number; vy: number; s: numb
 let confettiRunning = false;
 
 function sizeConfetti() {
-  confettiCanvas.width = window.innerWidth;
-  confettiCanvas.height = window.innerHeight;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  confettiCanvas.width = Math.floor(window.innerWidth * dpr);
+  confettiCanvas.height = Math.floor(window.innerHeight * dpr);
+  cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 sizeConfetti();
 window.addEventListener('resize', sizeConfetti);
@@ -242,8 +249,8 @@ function burstConfetti(n = 220) {
 }
 
 function confettiTick() {
-  cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-  confettiParts = confettiParts.filter((p) => p.y < confettiCanvas.height + 40);
+  cctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  confettiParts = confettiParts.filter((p) => p.y < window.innerHeight + 40);
   confettiParts.forEach((p) => {
     p.vy += 0.32;
     p.vx *= 0.99;
@@ -276,10 +283,14 @@ function screenWash(id: 'dmg-flash' | 'win-flash', holdMs: number) {
   (el as unknown as { _t?: number })._t = window.setTimeout(() => el.classList.add('hidden'), holdMs);
 }
 
-function toast(msg: string, ms = 2400) {  const el = document.createElement('div');
+function toast(msg: string, ms = 2400) {
+  const wrap = $('toasts');
+  // cap the stack — rapid turns must never bury the arena
+  while (wrap.children.length >= 3) wrap.firstChild?.remove();
+  const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = msg;
-  $('toasts').appendChild(el);
+  wrap.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity .4s';
     el.style.opacity = '0';
@@ -313,9 +324,6 @@ const game = new Game(canvas, sound, {
     dot.style.background = p.def.glow;
     dot.style.color = p.def.glow;
     pill.style.borderColor = p.def.glow;
-    dot.style.background = p.def.glow;
-    dot.style.color = p.def.glow;
-    $('turn-pill').style.borderColor = p.def.glow;
     document.querySelectorAll('.pcard').forEach((el) => {
       el.classList.toggle('active', el.getAttribute('data-id') === String(p.def.id));
     });
@@ -398,7 +406,7 @@ const game = new Game(canvas, sound, {
       `<div class="stat"><b>🐍</b><small>Serpent-charmer · ${most((p) => p.snakes).name}</small></div>` +
       `<div class="stat"><b>🍀</b><small>Fortune favors ${fortune.name} (+${fortune.ladders - fortune.snakes})</small></div>` +
       `<div class="stat"><b>🎲</b><small>${stats.rolls} rolls · sixes ${sixPct}% (fair ≈17%)</small></div>` +
-      `<div class="stat"><b>⏱️</b><small>${stats.turns} rounds · ${elapsedStr()}</small></div>`;
+      `<div class="stat"><b>⏱️</b><small>${stats.turns} turns · round ${roundOf()} · ${elapsedStr()}</small></div>`;
     $('win-stats').innerHTML = rows + mvps;
     lastWin = { name: winner.name, turns: stats.turns };
     setTimeout(() => {
@@ -438,13 +446,17 @@ const game = new Game(canvas, sound, {
       return;
     }
     let fate = '';
-    if (sq === 100) fate = ` <span class="fate-crown">👑 The Crown — exact roll only!</span>`;
+    const goal = game.goal;
+    if (sq === goal) fate = ` <span class="fate-crown">👑 The Crown — ${goal === 100 && lastRules.exactFinish && !lastRules.swift ? 'exact roll only!' : 'finish here!'}</span>`;
     else if (sq === 1) fate = ` <span class="fate-ladder">★ Start</span>`;
     else if (LADDERS[sq] !== undefined) fate = ` <span class="fate-ladder">🪜 climbs to ${LADDERS[sq]}</span>`;
     else if (SNAKES[sq] !== undefined) fate = ` <span class="fate-snake">🐍 slides to ${SNAKES[sq]}</span>`;
     chip.innerHTML = `■ ${sq}${fate}`;
-    chip.style.left = `${x}px`;
-    chip.style.top = `${y}px`;
+    // clamp inside the viewport — right/bottom-edge tiles must not push it off-screen
+    const cw = chip.offsetWidth || 180;
+    const ch = chip.offsetHeight || 34;
+    chip.style.left = `${Math.min(Math.max(8, x), window.innerWidth - cw - 8)}px`;
+    chip.style.top = `${Math.min(Math.max(8, y), window.innerHeight - ch - 8)}px`;
     chip.classList.remove('hidden');
   },
   // render budgeting: a menu overlay covers the arena
@@ -472,7 +484,7 @@ function elapsedStr(): string {
 setInterval(() => {
   if ($('topbar').classList.contains('hidden')) return;
   $('clock').textContent = elapsedStr();
-  $('round').textContent = `Round ${game.turnCount + 1}`;
+  $('round').textContent = `Round ${roundOf()}`;
 }, 1000);
 
 // ── setup screen ───────────────────────────────────────────────────────────
@@ -555,6 +567,8 @@ if (savedCrew) {
 } else {
   renderNameInputs();
 }
+syncRulesUI();
+syncSetupSegs();
 
 document.querySelectorAll('.count-row button').forEach((b) => {
   b.addEventListener('click', () => {
@@ -563,6 +577,7 @@ document.querySelectorAll('.count-row button').forEach((b) => {
     b.classList.add('on');
     playerCount = Number((b as HTMLElement).dataset.count);
     renderNameInputs(currentNames());
+    syncSetupSegs();
   });
 });
 
@@ -572,15 +587,25 @@ document.querySelectorAll('.mode-row button').forEach((b) => {
     document.querySelectorAll('.mode-row button').forEach((x) => x.classList.remove('on'));
     b.classList.add('on');
     voyage = (b as HTMLElement).dataset.mode === 'swift' ? 'swift' : 'classic';
+    syncRulesUI();
+    syncSetupSegs();
   });
 });
 
+function syncRulesUI() {
+  // Exact finish is meaningless in Swift (first past 50) — disable to avoid confusion.
+  const exact = $('rule-exact') as HTMLInputElement;
+  exact.disabled = voyage === 'swift';
+  exact.closest('.rule')?.classList.toggle('disabled', voyage === 'swift');
+}
+
 function readRules(): Rules {
+  const swift = voyage === 'swift';
   return {
-    exactFinish: ($('rule-exact') as HTMLInputElement).checked,
+    exactFinish: swift ? false : ($('rule-exact') as HTMLInputElement).checked,
     extraOnSix: ($('rule-six') as HTMLInputElement).checked,
     startOnSix: ($('rule-start') as HTMLInputElement).checked,
-    swift: voyage === 'swift',
+    swift,
   };
 }
 
@@ -663,8 +688,10 @@ function refreshResume() {
   const s = loadSave();
   const btn = $('btn-resume');
   if (s && s.names.length >= 2 && s.names.length <= 4) {
+    const n = Math.max(1, s.names.length);
+    const round = Math.floor(Math.max(0, s.turnCount | 0) / n) + 1;
     btn.classList.remove('hidden');
-    btn.textContent = `⛵ Resume last voyage — round ${(Math.max(0, s.turnCount | 0)) + 1}`;
+    btn.textContent = `⛵ Resume last voyage — round ${round}`;
   } else {
     btn.classList.add('hidden');
   }
@@ -736,6 +763,14 @@ function enterMatch(
   cpu: boolean[],
   snap?: MatchSnapshot & { elapsedMs?: number },
 ) {
+  // Dedupe display names — parties reuse names and blanks all become Explorer.
+  const seen = new Map<string, number>();
+  names = names.map((raw) => {
+    const base = (raw || '').trim() || 'Explorer';
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base} ${n + 1}`;
+  });
   lastNames = [...names];
   lastRules = { ...rules };
   lastCpu = [...cpu];
@@ -840,13 +875,14 @@ function openPause() {
   disarmRestart();
   const p = game.activePlayer;
   $('pause-sub').textContent = p
-    ? `${p.isCPU ? '🤖 ' : ''}${p.name} to roll · round ${game.turnCount + 1}`
+    ? `${p.isCPU ? '🤖 ' : ''}${p.name} to roll · round ${roundOf()}`
     : 'The isles wait for your return.';
   try {
     const st = game.stats();
-    const label = st.tier === 'low' ? 'Eco' : st.tier === 'balanced' ? 'Balanced' : 'Cinematic';
+    const base = st.tier === 'low' ? 'Eco' : st.tier === 'balanced' ? 'Balanced' : 'Cinematic';
+    const trim = st.governor === 0 ? '' : st.governor === 1 ? ' · auto-trimmed' : ' · swift-mode';
     $('perf-line').textContent =
-      `${label} · ${st.calls} draws · ${(st.tris / 1000).toFixed(0)}k tris · ${game.gpuLine()}`;
+      `${base}${trim} · ${st.calls} draws · ${(st.tris / 1000).toFixed(0)}k tris · ${game.gpuLine()}`;
   } catch {
     /* still waters */
   }
@@ -888,7 +924,8 @@ $('btn-quit').addEventListener('click', () => {
 });
 
 function cycleCamera() {
-  const btns = [...document.querySelectorAll<HTMLElement>('.seg button')];
+  const btns = [...document.querySelectorAll<HTMLElement>('#topbar .seg button')];
+  if (!btns.length) return;
   const cur = btns.findIndex((b) => b.classList.contains('on'));
   btns[(cur + 1) % btns.length].click();
 }
@@ -900,11 +937,17 @@ window.addEventListener('keydown', (e) => {
   const winOpen = !$('win').classList.contains('hidden');
   const helpOpen = !$('help').classList.contains('hidden');
   const pauseOpen = !$('pause').classList.contains('hidden');
+  const focusedButton = !!target?.closest?.('button');
   if (e.code === 'Space') {
     if (setupOpen || winOpen || helpOpen || pauseOpen) return;
+    // Let focused buttons activate natively — avoids double-rolling when
+    // ROLL itself is focused and avoids hijacking other buttons.
+    if (focusedButton) return;
     e.preventDefault();
     doRoll();
   } else if (e.code === 'Enter' && setupOpen) {
+    // Let focused buttons activate natively (count/mode/start) — no double start.
+    if (focusedButton) return;
     $('btn-start').click();
   } else if (e.code === 'KeyC' && !setupOpen) {
     cycleCamera();
@@ -929,15 +972,21 @@ try {
   /* ignore */
 }
 game.setDirector(directorSaved);
-document.querySelectorAll('.seg button').forEach((x) =>
-  x.classList.toggle('on', (x as HTMLElement).dataset.cam === (directorSaved ? 'auto' : 'follow')),
-);
-document.querySelectorAll('.seg button').forEach((b) => {
+const camBtns = [...document.querySelectorAll<HTMLElement>('#topbar .seg button')];
+camBtns.forEach((x) => {
+  x.classList.toggle('on', x.dataset.cam === (directorSaved ? 'auto' : 'follow'));
+  x.setAttribute('aria-pressed', x.classList.contains('on') ? 'true' : 'false');
+});
+camBtns.forEach((b) => {
   b.addEventListener('click', () => {
     sound.click();
-    document.querySelectorAll('.seg button').forEach((x) => x.classList.remove('on'));
+    camBtns.forEach((x) => {
+      x.classList.remove('on');
+      x.setAttribute('aria-pressed', 'false');
+    });
     b.classList.add('on');
-    const cam = (b as HTMLElement).dataset.cam!;
+    b.setAttribute('aria-pressed', 'true');
+    const cam = b.dataset.cam!;
     if (cam === 'auto') game.setDirector(true);
     else game.setCameraMode(cam as 'cine' | 'follow' | 'top' | 'free');
     try {
@@ -983,9 +1032,19 @@ $('btn-sound').addEventListener('click', () => {
 paintSoundButton();
 function syncGfxSeg() {
   const cur = loadChoice();
-  document.querySelectorAll('#gfx-seg button').forEach((x) =>
-    x.classList.toggle('on', (x as HTMLElement).dataset.gfx === cur),
-  );
+  document.querySelectorAll('#gfx-seg button').forEach((x) => {
+    const on = (x as HTMLElement).dataset.gfx === cur;
+    x.classList.toggle('on', on);
+    x.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+function syncSetupSegs() {
+  document.querySelectorAll('.count-row button').forEach((x) => {
+    x.setAttribute('aria-pressed', x.classList.contains('on') ? 'true' : 'false');
+  });
+  document.querySelectorAll('.mode-row button').forEach((x) => {
+    x.setAttribute('aria-pressed', x.classList.contains('on') ? 'true' : 'false');
+  });
 }
 syncGfxSeg();
 document.querySelectorAll('#gfx-seg button').forEach((b) => {
@@ -1060,7 +1119,7 @@ $('btn-change').addEventListener('click', () => {
 $('btn-share').addEventListener('click', async () => {
   sound.click();
   if (!lastWin) return;
-  const text = `👑 ${lastWin.name} conquered Serpent Isles in ${lastWin.turns} rounds! Think you can take the crown?`;
+  const text = `👑 ${lastWin.name} conquered Serpent Isles in ${lastWin.turns} turns! Think you can take the crown?`;
   try {
     const nav = navigator as Navigator & {
       share?: (d: { title: string; text: string; url: string }) => Promise<void>;
@@ -1131,6 +1190,13 @@ try {
 // voyage — perfect for attract screens and smoke tests
 try {
   if (new URLSearchParams(location.search).get('quickplay') !== null) {
+    // Start the generative bed too — silent until the first gesture unlocks it,
+    // then it fades in like a normal voyage instead of staying mute forever.
+    try {
+      sound.startAmbient();
+    } catch {
+      /* still waters */
+    }
     enterMatch(['Coral', 'Reef'], { ...readRules(), swift: true }, [true, true]);
   }
 } catch {
