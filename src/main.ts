@@ -910,6 +910,7 @@ $('btn-sound').addEventListener('click', (e) => {
   sound.setMuted(muted);
   btn.textContent = muted ? '🔇' : '🔊';
   btn.classList.toggle('on', !muted);
+  if (!muted) sound.click(); // confirm the way back on — silence confirms the other
 });
 // restore persisted mute state (SoundBank read it at construction)
 {

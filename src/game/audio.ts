@@ -24,7 +24,15 @@ export class SoundBank {
         this.ctx = new AC();
         this.master = this.ctx.createGain();
         this.master.gain.value = this.muted ? 0 : 0.55;
-        this.master.connect(this.ctx.destination);
+        // glue: a gentle bus compressor so stacked fanfares never clip phone speakers
+        const comp = this.ctx.createDynamicsCompressor();
+        comp.threshold.value = -18;
+        comp.knee.value = 12;
+        comp.ratio.value = 5;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.25;
+        this.master.connect(comp);
+        comp.connect(this.ctx.destination);
       }
       if (this.ctx.state === 'suspended') void this.ctx.resume();
       return this.ctx;
@@ -73,25 +81,38 @@ export class SoundBank {
     o.stop(t0 + dur + 0.05);
   }
 
+  // one shared white-noise buffer — per-call buffer baking was GC churn
+  private noiseBuf: AudioBuffer | null = null;
+
+  private sharedNoise(ctx: AudioContext): AudioBuffer {
+    if (!this.noiseBuf) {
+      const len = ctx.sampleRate * 2;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this.noiseBuf = buf;
+    }
+    return this.noiseBuf;
+  }
+
   private noise(dur: number, vol = 0.2, when = 0, lowpass = 2400) {
     if (this.muted) return;
     const ctx = this.ensure();
     if (!ctx || !this.master) return;
     const t0 = ctx.currentTime + when;
-    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
     const src = ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = this.sharedNoise(ctx);
+    src.loop = true;
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = lowpass;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(vol, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     src.connect(f).connect(g).connect(this.master);
     src.start(t0);
+    src.stop(t0 + dur + 0.05);
   }
 
   click() { this.tone(660, 0.07, 'triangle', 0.16); }
@@ -129,6 +150,18 @@ export class SoundBank {
   settleClick() {
     this.tone(520, 0.06, 'triangle', 0.14);
     this.noise(0.03, 0.08, 0, 4000);
+  }
+
+  /** Denied-action bonk — overshoot stays and locked gates must thud, not vanish. */
+  bonk() {
+    this.tone(190, 0.09, 'triangle', 0.15, 0, 140);
+    this.tone(150, 0.11, 'triangle', 0.13, 0.09, 110);
+  }
+
+  /** Third-six punishment sting — a little storm cloud in two notes. */
+  womp() {
+    this.tone(392, 0.16, 'triangle', 0.16, 0, 370);
+    this.tone(311, 0.26, 'triangle', 0.16, 0.14, 233);
   }
 
   /** Serpent landing thud at the tail. */
@@ -241,6 +274,11 @@ export class SoundBank {
         step++;
       }
     };
-    this.musicTimer = window.setInterval(pluck, 1500);
+    const tick = (): void => {
+      pluck();
+      // breathing tempo — a music box with a pulse, not a metronome
+      this.musicTimer = window.setTimeout(tick, 1350 + Math.random() * 450);
+    };
+    this.musicTimer = window.setTimeout(tick, 1200);
   }
 }

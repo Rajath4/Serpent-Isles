@@ -20,6 +20,7 @@ is **generated procedurally in code**: no downloads, no external models.
 - **Floating-island arena** — sunset sky, glowing sea, palms, crystals, braziers, fireflies, drifting clouds, stars
 - **Gallery-grade serpents** — PBR jewel skin, sculpted hooded heads, amber eyes, darting tongues, dorsal spines
 - **Arcane dice ritual** — rounded casino die, charge-up, corkscrew launch, spark trail, slow-mo slam, settling bounces, result flash
+- **🔊 Zero-asset sound design** — every effect synthesized live (rattles, glissandi, thuds, chimes, denial bonks, fanfare) over a breathing music-box bed, glued by a master compressor
 - **🤖 CPU sailors** — hand any seat to the computer; mixed crews welcome
 - **⚡ Swift voyage** — first past 50 in ~5 min, alongside the classic exact-100 epic
 - **⛵ Save/resume** — every turn auto-saves locally; interruptions lose nothing

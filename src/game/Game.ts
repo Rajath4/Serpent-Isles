@@ -720,6 +720,7 @@ export class Game {
       player.sixStreak++;
       if (this.rules.extraOnSix && player.sixStreak >= 3) {
         this.cb.onLog(`🎲 ${player.name} rolled a third straight 6 — turn skipped!`, 'bad');
+        this.sound.womp();
         player.sixStreak = 0;
         await this.wait(500);
         if (g !== this.gen) return;
@@ -732,6 +733,7 @@ export class Game {
     // leaving base?
     if (player.square === 0 && this.rules.startOnSix && value !== 6) {
       this.cb.onLog(`🎲 ${player.name} rolled ${value} — needs a 6 to set sail.`, 'info');
+      this.sound.bonk();
       return this.endTurn(value === 6 && this.rules.extraOnSix);
     }
 
@@ -739,6 +741,7 @@ export class Game {
     if (target > this.goal) {
       if (this.rules.exactFinish && !this.rules.swift) {
         this.cb.onLog(`🎯 ${player.name} rolled ${value} — needs exactly ${this.goal - player.square}. Stays put.`, 'info');
+        this.sound.bonk();
         return this.endTurn(value === 6 && this.rules.extraOnSix);
       }
       target = this.goal;
