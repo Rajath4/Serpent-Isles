@@ -3,6 +3,7 @@
 // top skins stay individual (per-tile pulse glow needs its own material).
 import * as THREE from 'three';
 import { mergeCompat } from './merge';
+import { Q } from './quality';
 import { BOARD_N, CELL, TOP_Y, TILE_H, SNAKES, LADDERS, cellCenter } from './constants';
 
 export interface BoardHandles {
@@ -61,7 +62,7 @@ function numberTexture(n: number, dark: boolean, special: 'start' | 'finish' | '
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = Q.anisotropy;
   return tex;
 }
 

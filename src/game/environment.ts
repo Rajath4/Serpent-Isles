@@ -3,6 +3,7 @@
 // static decor merged wherever per-object fading isn't needed.
 import * as THREE from 'three';
 import { mergeCompat } from './merge';
+import { Q } from './quality';
 
 export interface EnvHandles {
   update: (t: number, dt: number) => void;
@@ -47,7 +48,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   const sun = new THREE.DirectionalLight(0xffe3b3, 2.1);
   sun.position.set(18, 26, 12);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(Q.shadow, Q.shadow);
   sun.shadow.camera.left = -14;
   sun.shadow.camera.right = 14;
   sun.shadow.camera.top = 14;
@@ -248,7 +249,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   scene.add(new THREE.Mesh(mergeCompat(bowlGeos), bowlMat));
 
   // — Fireflies —
-  const fireflyCount = 130;
+  const fireflyCount = Q.fireflies;
   const fGeo = new THREE.BufferGeometry();
   const fPos = new Float32Array(fireflyCount * 3);
   const fSeed = new Float32Array(fireflyCount);
@@ -290,7 +291,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   // — Drifting clouds —
   const clouds: THREE.Sprite[] = [];
   const cloudTex = makeCloudTexture();
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < Q.clouds; i++) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.35 + Math.random() * 0.3, depthWrite: false, fog: false }));
     const a = Math.random() * Math.PI * 2;
     const r = 60 + Math.random() * 70;

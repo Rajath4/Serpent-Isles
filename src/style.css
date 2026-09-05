@@ -420,6 +420,12 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
 
 /* Pause */
 .pause-panel { max-width: 440px; }
+.pause-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 4px 0 2px; font-size: 13px; font-weight: 700; color: var(--muted);
+}
+.pause-row .seg button { font-size: 13px; padding: 7px 10px; }
+#perf-line { margin-top: 10px; font-variant-numeric: tabular-nums; }
 
 /* Player card extras */
 .pcard .meta small.exact { color: var(--gold); font-weight: 800; }

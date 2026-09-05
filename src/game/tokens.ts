@@ -1,6 +1,7 @@
 // ── Championship player tokens: distinct silhouettes, jewel materials ───────
 import * as THREE from 'three';
 import { mergeCompat } from './merge';
+import { Q } from './quality';
 import type { PlayerDef } from './constants';
 import { TOP_Y, cellCenter, stackOffset } from './constants';
 import { makeGlowTexture } from './environment';
@@ -64,7 +65,10 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     });
     const gold = new THREE.MeshStandardMaterial({ color: 0xf3cf7a, metalness: 1, roughness: 0.25 });
 
-    const body = new THREE.Mesh(new THREE.LatheGeometry(pawnProfile(), 28), jewel);
+    const body = new THREE.Mesh(
+      new THREE.LatheGeometry(pawnProfile(), Q.tier === 'low' ? 18 : 28),
+      jewel,
+    );
     body.castShadow = true;
     body.position.y = 0.06;
     g.add(body);

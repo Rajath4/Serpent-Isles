@@ -203,6 +203,16 @@
         <p class="kicker">Dropped anchor</p>
         <h2>Paused</h2>
         <p class="sub" id="pause-sub">The isles wait for your return.</p>
+        <div class="pause-row">
+          <span>Graphics</span>
+          <div class="seg" id="gfx-seg" role="group" aria-label="Graphics quality">
+            <button data-gfx="auto">Auto</button>
+            <button data-gfx="low">Eco</button>
+            <button data-gfx="balanced">Med</button>
+            <button data-gfx="high">Max</button>
+          </div>
+        </div>
+        <p class="fine" id="perf-line">…</p>
         <div class="win-row">
           <button id="btn-continue" class="cta">▶ &nbsp;Resume</button>
           <button id="btn-p-restart" class="ghost">↺ Restart</button>
@@ -224,6 +234,7 @@
           <li>Interrupted? Your voyage <strong>auto-saves every turn</strong> — resume it anytime from the crew screen.</li>
           <li><strong>Hover any tile</strong> to spotlight its serpent or ladder — the rest falls quiet. The <strong>🐍 button</strong> up top fades (👻) or hides (🚫) all routes for a clean board.</li>
           <li><strong>📺 Auto director</strong> (default) holds a top view, cuts to the dice, tracks every hop, slide and climb — then settles home. Grab the camera anytime with drag/scroll; it hands control straight back and resumes when you're idle.</li>
+          <li>🎨 Graphics <strong>auto-adapts</strong> to your device (Eco → Cinematic). Force a tier from the pause menu — your voyage is saved across the reload.</li>
           <li>Shortcuts: <kbd>Space</kbd> roll · <kbd>C</kbd> camera · <kbd>M</kbd> mute · <kbd>H</kbd> help · <kbd>Esc</kbd> pause.</li>
         </ol>
         <button id="btn-close-help" class="cta">Got it — back to the isles</button>

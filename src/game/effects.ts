@@ -1,5 +1,6 @@
 // ── Juice engine: pooled spark bursts + shockwave rings (zero GC churn) ─────
 import * as THREE from 'three';
+import { Q } from './quality';
 import { makeGlowTexture } from './environment';
 
 export interface BurstOptions {
@@ -66,6 +67,8 @@ export class Effects {
 
   burst(pos: THREE.Vector3, opts: BurstOptions) {
     const { color, count = 14, speed = 2.4, up = 2.2, life = 0.8, size = 0.32, gravity = 4.5 } = opts;
+    // low tier throws fewer sparks — same shapes, smaller crowds
+    const want = Math.max(1, Math.round(count * Q.particleMul));
     let spawned = 0;
     for (const p of this.particles) {
       if (p.active) continue;
@@ -81,7 +84,7 @@ export class Effects {
       p.vel.set(Math.cos(a) * r, up * (0.5 + Math.random()), Math.sin(a) * r);
       (p.spr.material as THREE.SpriteMaterial).color.setHex(color);
       (p.spr.material as THREE.SpriteMaterial).opacity = 1;
-      if (++spawned >= count) break;
+      if (++spawned >= want) break;
     }
   }
 

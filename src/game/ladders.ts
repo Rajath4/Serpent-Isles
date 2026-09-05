@@ -1,6 +1,7 @@
 // ── Low-arched golden ladders: 2 draws each, per-route spotlight support ────
 import * as THREE from 'three';
 import { mergeCompat } from './merge';
+import { Q } from './quality';
 import { LADDERS, TOP_Y, cellCenter } from './constants';
 import type { RouteMode } from './snakes';
 
@@ -77,7 +78,7 @@ export function buildLadders(scene: THREE.Scene): LadderHandles {
         apex.clone().add(off),
         p2.clone().add(off),
       );
-      railGeos.push(new THREE.TubeGeometry(rc, 16, 0.055, 8, false));
+      railGeos.push(new THREE.TubeGeometry(rc, Math.max(10, Math.round(16 * Q.tubeDetail)), 0.055, 8, false));
       [p0.clone().add(off), p2.clone().add(off)].forEach((p) => {
         const knob = new THREE.SphereGeometry(0.09, 10, 8);
         knob.translate(p.x, p.y + 0.08, p.z);

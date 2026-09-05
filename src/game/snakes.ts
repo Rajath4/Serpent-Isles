@@ -3,6 +3,7 @@
 // the shadow pass. Identical look, identical behavior, far fewer draw calls.
 import * as THREE from 'three';
 import { mergeCompat } from './merge';
+import { Q } from './quality';
 import { SNAKES, TOP_Y, cellCenter } from './constants';
 import { makeGlowTexture } from './environment';
 
@@ -239,36 +240,54 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       tongueBaseZ: 3.55 * R, tongueTravel: 1.1 * R, tongueExt: 0, phase: i * 1.7,
     };
 
-    // — body: clearcoat jewel skin with scale relief + head→tail gradient —
-    const TUB = 56;
-    const RAD = 10;
+    // — body: jewel skin with scale relief + head→tail gradient —
+    // (low tier: leaner tubes, plain PBR — same silhouette, cheaper fragments)
+    const D = Q.tubeDetail;
+    const TUB = Math.max(24, Math.round(56 * D));
+    const RAD = Math.max(6, Math.round(10 * D));
     const bodyGeo = new THREE.TubeGeometry(curve, TUB, radius, RAD, false);
     paintGradient(bodyGeo, pal.body, TUB, RAD);
-    const bodyMat = track(entry, new THREE.MeshPhysicalMaterial({
+    const skinOpts = {
       map: skin.map,
       bumpMap: skin.bump,
       bumpScale: 0.6,
       vertexColors: true,
-      roughness: 0.34,
+      roughness: Q.fancy ? 0.34 : 0.45,
       metalness: 0.08,
-      clearcoat: 1,
-      clearcoatRoughness: 0.22,
-      iridescence: 0.32,
-      iridescenceIOR: 1.3,
       emissive: new THREE.Color(pal.body),
       emissiveIntensity: 0.18,
-      envMapIntensity: 1.0,
-    }));
+      envMapIntensity: Q.fancy ? 1.0 : 0.6,
+    };
+    const bodyMat = track(
+      entry,
+      Q.fancy
+        ? new THREE.MeshPhysicalMaterial({
+            ...skinOpts,
+            clearcoat: 1,
+            clearcoatRoughness: 0.22,
+            iridescence: 0.32,
+            iridescenceIOR: 1.3,
+          })
+        : new THREE.MeshStandardMaterial(skinOpts),
+    );
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.castShadow = true;
     body.receiveShadow = true;
     group.add(body);
 
     // — cream underbelly hugging the tile (presence only, no shadow cost) —
-    const bellyMat = track(entry, new THREE.MeshPhysicalMaterial({
-      color: pal.belly, roughness: 0.5, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.4,
-    }));
-    const belly = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, radius * 0.78, 8, false), bellyMat);
+    const bellyMat = track(
+      entry,
+      Q.fancy
+        ? new THREE.MeshPhysicalMaterial({
+            color: pal.belly, roughness: 0.5, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.4,
+          })
+        : new THREE.MeshStandardMaterial({ color: pal.belly, roughness: 0.55, metalness: 0 }),
+    );
+    const belly = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, Math.max(16, Math.round(32 * D)), radius * 0.78, 8, false),
+      bellyMat,
+    );
     belly.position.y = -radius * 0.52;
     belly.receiveShadow = true;
     group.add(belly);
@@ -315,10 +334,17 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
 
     // — head: ONE continuous lathe-turned predator skull, parts fused by material —
     const hg = entry.headGroup;
-    const skullMat = track(entry, new THREE.MeshPhysicalMaterial({
-      color: pal.body, roughness: 0.32, metalness: 0.08,
-      clearcoat: 1, clearcoatRoughness: 0.22, envMapIntensity: 1.0,
-    }));
+    const skullMat = track(
+      entry,
+      Q.fancy
+        ? new THREE.MeshPhysicalMaterial({
+            color: pal.body, roughness: 0.32, metalness: 0.08,
+            clearcoat: 1, clearcoatRoughness: 0.22, envMapIntensity: 1.0,
+          })
+        : new THREE.MeshStandardMaterial({
+            color: pal.body, roughness: 0.38, metalness: 0.08, envMapIntensity: 0.6,
+          }),
+    );
     const skullParts: THREE.BufferGeometry[] = [];
     const prof: Array<[number, number]> = [
       [1.06, -0.45], [1.05, -0.15], [1.0, 0.1], [1.12, 0.55], [1.18, 1.0], [1.02, 1.6],
@@ -340,9 +366,14 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
 
     // cobra hood on a few individuals only
     if ([0, 4, 7].includes(i)) {
-      const hoodMat = track(entry, new THREE.MeshPhysicalMaterial({
-        color: pal.pattern, roughness: 0.42, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.35,
-      }));
+      const hoodMat = track(
+        entry,
+        Q.fancy
+          ? new THREE.MeshPhysicalMaterial({
+              color: pal.pattern, roughness: 0.42, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.35,
+            })
+          : new THREE.MeshStandardMaterial({ color: pal.pattern, roughness: 0.5, metalness: 0.1 }),
+      );
       const hoodInnerMat = track(entry, new THREE.MeshStandardMaterial({ color: pal.belly, roughness: 0.55 }));
       const hoodM = new THREE.Matrix4().compose(
         new THREE.Vector3(0, 0.1 * R, -0.85 * R),

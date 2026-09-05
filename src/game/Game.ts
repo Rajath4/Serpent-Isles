@@ -12,6 +12,7 @@ import { buildDice, type DiceHandles } from './dice';
 import { SoundBank } from './audio';
 import { Effects } from './effects';
 import { makeGlowTexture } from './environment';
+import { Q, glLine } from './quality';
 import {
   PLAYER_DEFS, SNAKES, LADDERS, DEFAULT_RULES, GOAL_CLASSIC, GOAL_SWIFT,
   TOP_Y, easeInOut, smoother, type PlayerDef, type Rules,
@@ -129,9 +130,9 @@ export class Game {
     this.sound = sound;
     this.cb = cb;
     this.renderer = new THREE.WebGLRenderer({
-      canvas, antialias: true, powerPreference: 'high-performance', stencil: false,
+      canvas, antialias: Q.antialias, powerPreference: 'high-performance', stencil: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, Q.pixelCap));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // shadows re-render every 2nd frame — a 16ms lag no eye can catch, ~half the cost
@@ -344,6 +345,17 @@ export class Game {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Live render stats for the pause-menu readout. */
+  stats() {
+    const info = this.renderer.info;
+    return { tier: Q.tier, calls: info.render.calls, tris: info.render.triangles };
+  }
+
+  /** GPU identity line for the pause-menu readout. */
+  gpuLine() {
+    return glLine(this.renderer);
+  }
+
   /**
    * Silent governor: samples real frame time every ~2s and steps render
    * resolution down/up a tier. Nobody is ever told — the game just stays fluid.
@@ -360,10 +372,14 @@ export class Game {
     else return;
     const dpr = window.devicePixelRatio || 1;
     this.renderer.setPixelRatio(
-      this.perfTier === 0 ? Math.min(dpr, 2) : this.perfTier === 1 ? Math.min(dpr, 1.5) : 1,
+      this.perfTier === 0
+        ? Math.min(dpr, Q.pixelCap)
+        : this.perfTier === 1
+          ? Math.min(dpr, Math.min(1.5, Q.pixelCap))
+          : 1,
     );
     // swift tier also halves the shadow map — quarter the shadow texels
-    const shadowSize = this.perfTier === 2 ? 1024 : 2048;
+    const shadowSize = (this.perfTier === 2 ? Math.min(1024, Q.shadow) : Q.shadow) as 1024 | 2048;
     if (this.sun.shadow.mapSize.x !== shadowSize) {
       this.sun.shadow.mapSize.set(shadowSize, shadowSize);
       if (this.sun.shadow.map) {

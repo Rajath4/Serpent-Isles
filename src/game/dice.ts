@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { easeOut, easeInOut } from './constants';
+import { Q } from './quality';
 import { makeGlowTexture } from './environment';
 
 function pipTexture(v: number): THREE.CanvasTexture {
@@ -43,7 +44,7 @@ function pipTexture(v: number): THREE.CanvasTexture {
   layouts[v].forEach(([x, y]) => pip(x, y));
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = Q.anisotropy;
   return tex;
 }
 
@@ -140,7 +141,7 @@ export function buildDice(
   // rounded casino body — clearcoat ivory, pips printed as floating decals
   const mesh = new THREE.Group();
   const body = new THREE.Mesh(
-    new RoundedBoxGeometry(DIE, DIE, DIE, 4, 0.12),
+    new RoundedBoxGeometry(DIE, DIE, DIE, Q.tier === 'low' ? 2 : 4, 0.12),
     new THREE.MeshPhysicalMaterial({
       color: 0xf7f1e3, roughness: 0.24, metalness: 0.05,
       clearcoat: 1, clearcoatRoughness: 0.15, envMapIntensity: 0.9,

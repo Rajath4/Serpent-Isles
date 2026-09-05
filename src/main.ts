@@ -4,6 +4,8 @@ import { Game, type PlayerState, type MatchSnapshot } from './game/Game';
 import { SoundBank } from './game/audio';
 import { PLAYER_DEFS, CPU_NAMES, SNAKES, LADDERS, type Rules } from './game/constants';
 import type { RouteMode } from './game/snakes';
+import { Q, applyQuality, resolveChoice, loadChoice, saveChoice } from './game/quality';
+import type { QualityChoice } from './game/quality';
 
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
@@ -12,6 +14,9 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
 
 const canvas = $('scene') as unknown as HTMLCanvasElement;
 const sound = new SoundBank();
+
+// graphics quality is decided BEFORE the scene is built (geometry bakes to it)
+applyQuality(resolveChoice(loadChoice()));
 
 const DICE_PIPS: Record<number, number[]> = {
   1: [0, 0, 0, 0, 1, 0, 0, 0, 0],
@@ -740,6 +745,14 @@ function openPause() {
   $('pause-sub').textContent = p
     ? `${p.isCPU ? '🤖 ' : ''}${p.name} to roll · round ${game.turnCount + 1}`
     : 'The isles wait for your return.';
+  try {
+    const st = game.stats();
+    const label = st.tier === 'low' ? 'Eco' : st.tier === 'balanced' ? 'Balanced' : 'Cinematic';
+    $('perf-line').textContent =
+      `${label} · ${st.calls} draws · ${(st.tris / 1000).toFixed(0)}k tris · ${game.gpuLine()}`;
+  } catch {
+    /* still waters */
+  }
   $('pause').classList.remove('hidden');
   $('btn-continue').focus();
 }
@@ -825,6 +838,30 @@ document.querySelectorAll('.seg button').forEach((b) => {
 });
 
 // ── top buttons ────────────────────────────────────────────────────────────
+function syncGfxSeg() {
+  const cur = loadChoice();
+  document.querySelectorAll('#gfx-seg button').forEach((x) =>
+    x.classList.toggle('on', (x as HTMLElement).dataset.gfx === cur),
+  );
+}
+syncGfxSeg();
+document.querySelectorAll('#gfx-seg button').forEach((b) => {
+  b.addEventListener('click', () => {
+    sound.click();
+    const choice = (b as HTMLElement).dataset.gfx as QualityChoice;
+    saveChoice(choice);
+    syncGfxSeg();
+    // geometry bakes to quality at boot — a change needs one reload.
+    // the voyage is saved first, so Resume brings it straight back.
+    if (resolveChoice(choice) !== Q.tier) {
+      saveMatch();
+      toast('🎨 Graphics apply after reload — voyage saved.');
+      window.setTimeout(() => location.reload(), 900);
+    } else {
+      toast('🎨 Already sailing at that quality.');
+    }
+  });
+});
 const ROUTE_ICON: Record<RouteMode, string> = { full: '🐍', ghost: '👻', hidden: '🚫' };
 let routeMode: RouteMode = 'full';
 try {
