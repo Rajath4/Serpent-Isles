@@ -111,6 +111,9 @@ export class Game {
   private perfAcc = 0;
   private perfN = 0;
   private perfTier = 0; // 0: full · 1: balanced · 2: swift
+  private badWindows = 0;
+  private goodWindows = 0;
+  private perfCooldown = 0;
   private sound: SoundBank;
   private cb: Callbacks;
 
@@ -357,8 +360,11 @@ export class Game {
   }
 
   /**
-   * Silent governor: samples real frame time every ~2s and steps render
-   * resolution down/up a tier. Nobody is ever told — the game just stays fluid.
+   * Forgiving governor: samples real frame time in ~2s windows and only acts
+   * on SUSTAINED evidence. Three strikes to step down (celebrations and
+   * hitches can never trigger it), two clean windows to climb back up, a
+   * cold-start grace for shader compilation, and a cooldown after every change
+   * so tiers settle instead of oscillating. Nobody is ever told.
    */
   private autoPerf(rawDt: number) {
     this.perfAcc += rawDt;
@@ -367,9 +373,44 @@ export class Game {
     const avg = this.perfAcc / this.perfN;
     this.perfAcc = 0;
     this.perfN = 0;
-    if (avg > 1 / 42 && this.perfTier < 2) this.perfTier++;
-    else if (avg < 1 / 57 && this.perfTier > 0) this.perfTier--;
-    else return;
+    // cold start: one-time shader compilation poisons early windows — never punish it
+    if (this.frame < 300) {
+      this.badWindows = 0;
+      this.goodWindows = 0;
+      return;
+    }
+    // post-change cooldown: let the new tier breathe before judging it
+    if (this.perfCooldown > 0) {
+      this.perfCooldown--;
+      this.badWindows = 0;
+      this.goodWindows = 0;
+      return;
+    }
+    if (avg > 1 / 40) {
+      this.badWindows++;
+      this.goodWindows = 0;
+    } else if (avg < 1 / 50) {
+      this.goodWindows++;
+      this.badWindows = 0;
+    } else {
+      // grey zone: smooth enough to hold, not clean enough to count — reset streaks
+      this.badWindows = 0;
+      this.goodWindows = 0;
+    }
+    if (this.badWindows >= 3 && this.perfTier < 2) {
+      this.perfTier++;
+      this.badWindows = 0;
+      this.perfCooldown = 2;
+      this.applyPerfTier();
+    } else if (this.goodWindows >= 2 && this.perfTier > 0) {
+      this.perfTier--;
+      this.goodWindows = 0;
+      this.perfCooldown = 2;
+      this.applyPerfTier();
+    }
+  }
+
+  private applyPerfTier() {
     const dpr = window.devicePixelRatio || 1;
     this.renderer.setPixelRatio(
       this.perfTier === 0

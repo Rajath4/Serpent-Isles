@@ -21,7 +21,7 @@ no downloads, no external models. 100% offline, installable PWA, zero tracking.
   tracking shots for hops/slides/climbs, slow showcase drift when idle, instant
   surrender to drag/scroll) · 🎬 cinematic · 🎯 follow · 🗺️ top-down · 🕹️ free orbit
 - **House rules** — exact-finish, bonus roll on 6 (3rd straight 6 forfeits), start-on-6
-- **Adaptive performance** — Eco/Balanced/Cinematic tiers auto-detected from real GPU capability (geometry density, jewel clearcoat shaders, particles, shadows, AA, pixel cap) with manual override in pause; a silent live governor still trims resolution; merged geometry, 6-light rig, shadow stride, occlusion-culled foliage
+- **Adaptive performance** — Eco/Balanced/Cinematic tiers auto-detected from real GPU capability (geometry density, jewel clearcoat shaders, particles, shadows, AA, pixel cap) with manual override in pause; a forgiving live governor trims resolution only on sustained weakness (never on load hitches or celebration spikes) and climbs back fast; merged geometry, 6-light rig, shadow stride, occlusion-culled foliage
 
 ## 🚀 Run
 
