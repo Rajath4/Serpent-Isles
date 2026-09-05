@@ -46,7 +46,7 @@ Tip: open `?quickplay` for an instant self-playing demo voyage (great for smoke 
 2. Current player hits **ROLL DICE** (or `Space`); pass the device around. `Esc` pauses.
 3. Gold rings = ladders up · red rings = serpents down.
    Classic: exact **100** takes the crown · Swift: first past **50**.
-4. Hover any tile to spotlight its serpent or ladder. The 🐍 button fades (👻) or hides all routes.
+4. Click any tile to spotlight its serpent or ladder. The 🐍 button fades (👻) or hides all routes.
 
 | Input | Action |
 |---|---|
@@ -54,7 +54,7 @@ Tip: open `?quickplay` for an instant self-playing demo voyage (great for smoke 
 | Drag / scroll | Orbit / zoom (director yields instantly) |
 | `C` | Cycle cameras (📺 auto · 🎬 cine · 🎯 follow · 🗺️ top · 🕹️ free) |
 | `M` / `H` / `Esc` | Mute · help · pause |
-| Hover a tile | Peek its fate (🪜 climbs to / 🐍 slides to) |
+| Click a tile | Peek its fate (🪜 climbs to / 🐍 slides to) |
 
 **House rules:** exact finish · bonus roll on 6 (3rd straight 6 forfeits) · start-on-6 · voyage length.
 

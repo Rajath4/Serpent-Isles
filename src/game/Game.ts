@@ -97,9 +97,10 @@ export class Game {
   private raycaster = new THREE.Raycaster();
   private pointerNdc = new THREE.Vector2();
   private pointerClient = { x: 0, y: 0 };
-  private pointerOnBoard = false;
-  private pointerDirty = false;
-  // tap-to-inspect (touch parity for hover): quick stationary tap peeks a tile
+  // click/tap-to-inspect bookkeeping: a stationary press peeks a tile.
+  // Deliberately NOT hover-driven — spotlighting dims every other route,
+  // so it must only ever fire from an explicit click/tap, never the cursor
+  // drifting across the board.
   private downX = 0;
   private downY = 0;
   private downT = 0;
@@ -229,23 +230,14 @@ export class Game {
     this.marker.visible = false;
     this.scene.add(this.marker);
 
-    // hover inspector input
-    canvas.addEventListener('pointermove', (e) => {
-      const r = canvas.getBoundingClientRect();
-      this.pointerNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-      this.pointerClient = { x: e.clientX, y: e.clientY };
-      this.pointerOnBoard = true;
-      this.pointerDirty = true;
-      if (this.tapTimer !== null) {
-        clearTimeout(this.tapTimer);
-        this.tapTimer = null;
-      }
-    });
+    // click/tap-to-inspect input. Cursor movement alone NEVER spotlights —
+    // the dimming it causes reads as a rendering bug, so inspection only
+    // fires from an explicit stationary click/tap (pointerup below).
     canvas.addEventListener('pointerleave', () => {
-      this.pointerOnBoard = false;
       this.canvas.style.cursor = '';
       if (this.hovered !== null) {
         this.hovered = null;
+        this.applyHoverFocus(null);
         this.cb.onHover(null);
       }
     });
@@ -256,15 +248,6 @@ export class Game {
       this.downX = e.clientX;
       this.downY = e.clientY;
       this.downT = performance.now();
-      if (this.tapTimer !== null) {
-        clearTimeout(this.tapTimer);
-        this.tapTimer = null;
-      }
-      if (this.hovered !== null) {
-        this.hovered = null;
-        this.cb.onHover(null);
-        this.applyHoverFocus(null);
-      }
     });
     // deliberate camera input (orbit / zoom) pauses the director's showcase
     canvas.addEventListener('wheel', () => {
@@ -273,31 +256,20 @@ export class Game {
     window.addEventListener('pointerup', (e) => {
       this.dragging = false;
       this.canvas.style.cursor = '';
-      // tap (not drag) on the arena during a match → inspect that tile briefly
+      // click/tap (not drag) on the arena during a match → inspect that tile.
+      // Ignored while a turn animates: rollDice() clears any live inspection
+      // at turn start, so mid-action clicks stay purely camera input.
       const dx = e.clientX - this.downX;
       const dy = e.clientY - this.downY;
       const quick = performance.now() - this.downT < 450;
       if (
         (e.target as HTMLElement | null) === (this.canvas as unknown as HTMLElement) &&
         this.players.length &&
+        !this.busy &&
         quick &&
         dx * dx + dy * dy < 100
       ) {
-        const r = this.canvas.getBoundingClientRect();
-        this.pointerNdc.set(
-          ((e.clientX - r.left) / r.width) * 2 - 1,
-          -((e.clientY - r.top) / r.height) * 2 + 1,
-        );
-        this.pointerClient = { x: e.clientX, y: e.clientY };
-        this.pointerOnBoard = true;
-        this.pointerDirty = true;
-        if (this.tapTimer !== null) clearTimeout(this.tapTimer);
-        this.tapTimer = window.setTimeout(() => {
-          this.tapTimer = null;
-          this.hovered = null;
-          this.applyHoverFocus(null);
-          this.cb.onHover(null);
-        }, 2600);
+        this.tryInspect(e.clientX, e.clientY);
       }
     });
 
@@ -403,35 +375,11 @@ export class Game {
       } else {
         this.marker.visible = false;
       }
-      // hover inspector (30Hz, and only when the pointer or the camera moved).
-      // Paused while a turn animates: the tracking camera sweeps under a stale
-      // cursor, which would spotlight random tiles mid-hop/climb/slide and dim
-      // every other route. rollDice() already cleared any stale spotlight.
-      const camSweeping = this.controls.autoRotate || this.camTween !== null || this.trackFn !== null;
-      if (
-        (this.frame & 1) === 0 &&
-        !this.busy &&
-        this.pointerOnBoard &&
-        !this.dragging &&
-        (this.pointerDirty || camSweeping) &&
-        this.tiles.length
-      ) {
-        this.pointerDirty = false;
-        this.raycaster.setFromCamera(this.pointerNdc, this.camera);
-        const hits = this.raycaster.intersectObjects(this.tiles, false);
-        const sq = hits.length ? (hits[0].object.userData.square as number) : null;
-        if (sq !== this.hovered) {
-          this.hovered = sq;
-          this.canvas.style.cursor = sq !== null ? 'pointer' : '';
-          this.applyHoverFocus(sq);
-          this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
-        } else if (sq !== null) {
-          this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
-        }
-      }
+      // (tile inspection is click/tap-driven via tryInspect — nothing to do
+      // per-frame here, so camera sweeps can never spotlight tiles by accident)
       this.controls.update();
-      // foliage can never block the lens — ghost whatever stands in the way.
-      // every 4th frame is plenty (the fade itself is smoothed); offset from hover.
+      // foliage can never block the lens — ghost whatever stands in the way,
+      // every 4th frame is plenty (the fade itself is smoothed).
       if ((this.frame & 3) === 1) this.env.fadeOccluders(this.camera.position, this.controls.target);
       // menu budgeting: behind an opaque overlay with nothing in flight,
       // presenting every 2nd frame is invisible — updates keep full rate.
@@ -746,7 +694,9 @@ export class Game {
     }
   }
 
-  /** Spotlight the route(s) touching a square; everything else falls back. */
+  /** Spotlight the route(s) touching a square; everything else falls back.
+   *  Only ever called from explicit click/tap inspection (tryInspect) or its
+   *  dismissal paths — never from cursor movement. */
   private applyHoverFocus(sq: number | null) {
     let snakeHead: number | null = null;
     let ladderFoot: number | null = null;
@@ -774,6 +724,42 @@ export class Game {
     this.ladders.spotlight(ladderFoot);
     this.snakes.setDimAll(ladderFoot !== null);
     this.ladders.setDimAll(snakeHead !== null);
+  }
+
+  /**
+   * Click/tap-to-inspect: raycast the pressed point exactly once and spotlight
+   * that tile's route. Clicking the same tile again — or empty water — dismisses.
+   * Auto-dismisses after a few seconds so a dimmed board never gets stuck on.
+   */
+  private tryInspect(clientX: number, clientY: number) {
+    const r = this.canvas.getBoundingClientRect();
+    this.pointerNdc.set(
+      ((clientX - r.left) / r.width) * 2 - 1,
+      -((clientY - r.top) / r.height) * 2 + 1,
+    );
+    this.pointerClient = { x: clientX, y: clientY };
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const hits = this.raycaster.intersectObjects(this.tiles, false);
+    const sq = hits.length ? (hits[0].object.userData.square as number) : null;
+    if (this.tapTimer !== null) {
+      clearTimeout(this.tapTimer);
+      this.tapTimer = null;
+    }
+    if (sq === null || sq === this.hovered) {
+      this.hovered = null;
+      this.applyHoverFocus(null);
+      this.cb.onHover(null);
+      return;
+    }
+    this.hovered = sq;
+    this.applyHoverFocus(sq);
+    this.cb.onHover(sq, clientX, clientY);
+    this.tapTimer = window.setTimeout(() => {
+      this.tapTimer = null;
+      this.hovered = null;
+      this.applyHoverFocus(null);
+      this.cb.onHover(null);
+    }, 4000);
   }
 
   /** Global route visibility: full detail, ghost outlines, or board-only. */
@@ -826,9 +812,9 @@ export class Game {
     const player = this.players[this.current];
     this.busy = true;
     const g = this.gen; // abandon checkpoint — stale chains bail at every await below
-    // Clear any hover spotlight before the dice flies: otherwise a cursor left
-    // resting on a ladder/snake tile keeps that route solo-lit (rest dimmed)
-    // for the whole hop/climb/slide. It re-spotlights on next pointer move.
+    // Clear any live tile inspection before the dice flies: otherwise a
+    // clicked tile keeps its route solo-lit (rest dimmed) for the whole
+    // hop/climb/slide. It re-inspects on the next click.
     if (this.hovered !== null) {
       this.hovered = null;
       this.applyHoverFocus(null);

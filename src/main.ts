@@ -362,7 +362,7 @@ const game = new Game(canvas, sound, {
       // one-time discovery nudge, dismissed by the next roll like every hint
       scoutShown = true;
       const h = $('hint');
-      h.innerHTML = '💡 Hover any tile to scout serpents &amp; ladders';
+      h.innerHTML = '💡 Click any tile to scout serpents &amp; ladders';
       h.classList.remove('hidden');
     }
     scheduleCpuRoll(p);
@@ -1126,7 +1126,7 @@ $('btn-routes').addEventListener('click', () => {
     routeMode === 'full'
       ? '🐍 Routes in full color'
       : routeMode === 'ghost'
-        ? '👻 Routes ghosted — hover a tile to spotlight'
+        ? '👻 Routes ghosted — click a tile to spotlight'
         : '🚫 Routes hidden — pure board focus',
   );
 });
