@@ -8,7 +8,7 @@ A premium, highly-polished **3D Snakes & Ladders** game for **2–4 local player
 **plus CPU sailors** for solo voyages. Built with **Three.js + Vite + TypeScript** — every 3D asset
 is **generated procedurally in code**: no downloads, no external models.
 
-**▶ Play it now:** `https://rajath4.github.io/Serpent-Isles/`
+**▶ [Play it now](https://rajath4.github.io/Serpent-Isles/)**
 · 100% offline · installable PWA · zero tracking · no sign-up, ever.
 
 | ![Crew setup](docs/screenshots/setup.png) | ![Live match](docs/screenshots/gameplay.png) |
