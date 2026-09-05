@@ -403,10 +403,14 @@ export class Game {
       } else {
         this.marker.visible = false;
       }
-      // hover inspector (30Hz, and only when the pointer or the camera moved)
+      // hover inspector (30Hz, and only when the pointer or the camera moved).
+      // Paused while a turn animates: the tracking camera sweeps under a stale
+      // cursor, which would spotlight random tiles mid-hop/climb/slide and dim
+      // every other route. rollDice() already cleared any stale spotlight.
       const camSweeping = this.controls.autoRotate || this.camTween !== null || this.trackFn !== null;
       if (
         (this.frame & 1) === 0 &&
+        !this.busy &&
         this.pointerOnBoard &&
         !this.dragging &&
         (this.pointerDirty || camSweeping) &&
@@ -822,6 +826,14 @@ export class Game {
     const player = this.players[this.current];
     this.busy = true;
     const g = this.gen; // abandon checkpoint — stale chains bail at every await below
+    // Clear any hover spotlight before the dice flies: otherwise a cursor left
+    // resting on a ladder/snake tile keeps that route solo-lit (rest dimmed)
+    // for the whole hop/climb/slide. It re-spotlights on next pointer move.
+    if (this.hovered !== null) {
+      this.hovered = null;
+      this.applyHoverFocus(null);
+      this.cb.onHover(null);
+    }
     this.cb.onLock(true);
     this.sound.dice();
 
