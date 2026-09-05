@@ -1,23 +1,22 @@
 // ── The arcane throw: anticipation → launch → slam → settling bounces ──────
-// A conjured die, not a table die — it shivers, rockets skyward trailing sparks,
-// slams onto a random spot of the velvet pad, bounces twice, and locks face-up.
+// A conjured casino die (rounded, clearcoat, printed pips) — it shivers,
+// rockets skyward trailing sparks, slams onto a random spot of the velvet pad,
+// bounces twice, and locks face-up.
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { easeOut, easeInOut } from './constants';
+import { makeGlowTexture } from './environment';
 
 function pipTexture(v: number): THREE.CanvasTexture {
+  // transparent decal: printed pips + gold border ring over the ivory body
   const s = 256;
   const c = document.createElement('canvas');
   c.width = c.height = s;
   const g = c.getContext('2d')!;
-  const grad = g.createLinearGradient(0, 0, s, s);
-  grad.addColorStop(0, '#fffdf6');
-  grad.addColorStop(1, '#e8dcc2');
-  g.fillStyle = grad;
-  roundRect(g, 8, 8, s - 16, s - 16, 44);
-  g.fill();
+  g.clearRect(0, 0, s, s);
   g.strokeStyle = '#b89b5e';
-  g.lineWidth = 10;
-  roundRect(g, 14, 14, s - 28, s - 28, 38);
+  g.lineWidth = 9;
+  roundRect(g, 20, 20, s - 40, s - 40, 34);
   g.stroke();
   const pip = (x: number, y: number) => {
     const rg = g.createRadialGradient(x - 8, y - 8, 2, x, y, 30);
@@ -75,9 +74,11 @@ function faceQuaternion(v: number, extraYaw: number): THREE.Quaternion {
 }
 
 export interface DiceHandles {
-  mesh: THREE.Mesh;
+  mesh: THREE.Group;
   rolling: boolean;
   roll: (value: number) => Promise<void>;
+  /** A playful hop when the player hovers ROLL — delight before the throw. */
+  nudge: () => void;
   update: (t: number, dt: number) => void;
   setIdle: (on: boolean) => void;
 }
@@ -134,22 +135,59 @@ export function buildDice(
   padTrim.position.set(PAD_X, 0.24, PAD_Z);
   scene.add(padTrim);
 
-  const mats = [1, 6, 2, 5, 3, 4].map(
-    (v) => new THREE.MeshStandardMaterial({ map: pipTexture(v), roughness: 0.3, metalness: 0.1 }),
+  const DIE = 0.85;
+  const HALF = DIE / 2;
+  // rounded casino body — clearcoat ivory, pips printed as floating decals
+  const mesh = new THREE.Group();
+  const body = new THREE.Mesh(
+    new RoundedBoxGeometry(DIE, DIE, DIE, 4, 0.12),
+    new THREE.MeshPhysicalMaterial({
+      color: 0xf7f1e3, roughness: 0.24, metalness: 0.05,
+      clearcoat: 1, clearcoatRoughness: 0.15, envMapIntensity: 0.9,
+    }),
   );
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.85), mats);
-  mesh.castShadow = true;
+  body.castShadow = true;
+  mesh.add(body);
+  // [value, position, rotation] — same pip convention as classic dice
+  const faces: Array<[number, [number, number, number], [number, number, number]]> = [
+    [1, [HALF + 0.002, 0, 0], [0, Math.PI / 2, 0]],
+    [6, [-HALF - 0.002, 0, 0], [0, -Math.PI / 2, 0]],
+    [2, [0, HALF + 0.002, 0], [-Math.PI / 2, 0, 0]],
+    [5, [0, -HALF - 0.002, 0], [Math.PI / 2, 0, 0]],
+    [3, [0, 0, HALF + 0.002], [0, 0, 0]],
+    [4, [0, 0, -HALF - 0.002], [0, Math.PI, 0]],
+  ];
+  for (const [v, pos, rot] of faces) {
+    const decal = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.66, 0.66),
+      new THREE.MeshStandardMaterial({ map: pipTexture(v), transparent: true, roughness: 0.35, metalness: 0.05 }),
+    );
+    decal.position.set(...pos);
+    decal.rotation.set(...rot);
+    mesh.add(decal);
+  }
   const rest = new THREE.Vector3(PAD_X, REST_Y, PAD_Z);
   mesh.position.copy(rest);
   scene.add(mesh);
 
-  const spot = new THREE.SpotLight(0xffe3b3, 25, 18, 0.6, 0.5, 1.6);
+  // impact flash card — a soft bloom that exhales on every slam
+  const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeGlowTexture(), color: 0xffe9b3, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  flash.position.copy(rest);
+  scene.add(flash);
+  let flashT = 1;
+
+  const SPOT_BASE = 25;
+  const spot = new THREE.SpotLight(0xffe3b3, SPOT_BASE, 18, 0.6, 0.5, 1.6);
   spot.position.set(PAD_X, 7, PAD_Z);
   spot.target.position.set(PAD_X, REST_Y, PAD_Z);
   scene.add(spot, spot.target);
 
   let anim: Throw | null = null;
   let idle = true;
+  let nudgeT: number | null = null;
   const tmpQ = new THREE.Quaternion();
   const tmpE = new THREE.Euler();
 
@@ -186,17 +224,43 @@ export function buildDice(
         };
       });
     },
+    nudge() {
+      if (anim || nudgeT !== null || !idle) return;
+      idle = false;
+      nudgeT = 0;
+    },
     update(_t: number, dt: number) {
+      // impact flash exhales every frame while alive
+      if (flashT < 1) {
+        flashT = Math.min(1, flashT + dt * 3.2);
+        const s = 0.5 + flashT * 3.4;
+        flash.scale.set(s, s, 1);
+        (flash.material as THREE.SpriteMaterial).opacity = 0.85 * (1 - flashT);
+      }
       if (!anim) {
-        if (idle) {
+        if (nudgeT !== null) {
+          nudgeT += dt;
+          const k = nudgeT / 0.32;
+          if (k >= 1) {
+            nudgeT = null;
+            idle = true;
+            mesh.position.set(rest.x, REST_Y, rest.z);
+            mesh.scale.set(1, 1, 1);
+          } else {
+            mesh.position.set(rest.x, REST_Y + Math.sin(k * Math.PI) * 0.35, rest.z);
+            mesh.rotation.y += dt * 7;
+            const pop = 1 + 0.08 * Math.sin(k * Math.PI);
+            mesh.scale.set(pop, pop, pop);
+          }
+        } else if (idle) {
           // at rest on the pad: breathe + slow honor-spin (yaw keeps the face up)
           mesh.position.set(rest.x, REST_Y + Math.sin(_t * 1.6) * 0.03, rest.z);
           mesh.rotation.y += dt * 0.4;
         }
-        return;
-      }
-      const A = anim;
-      A.t += dt;
+        spot.intensity += (SPOT_BASE - spot.intensity) * Math.min(1, dt * 3);
+      } else {
+        const A = anim!;
+        A.t += dt;
 
       if (A.phase === 'anticipate') {
         // the shiver before the throw — crouch, not yet leap
@@ -208,6 +272,7 @@ export function buildDice(
         );
         const s = 1 + Math.sin(k * Math.PI) * 0.07;
         mesh.scale.set(s, 2 - s > 0 ? 2 - s : 1, s);
+        spot.intensity = SPOT_BASE * (1 + k * 0.8); // the lamp swells with the charge
         tmpQ.setFromEuler(tmpE.set(Math.sin(A.t * 60) * 0.05 * k, 0, Math.cos(A.t * 55) * 0.05 * k));
         setQuat(A.qBase.clone().multiply(tmpQ));
         if (k >= 1) {
@@ -230,6 +295,7 @@ export function buildDice(
         setQuat(A.q);
         const stretch = 1 + Math.sin(k * Math.PI) * 0.1;
         mesh.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
+        spot.intensity = SPOT_BASE * 2.2;
         onTrail?.(mesh.position);
         if (k >= 1) {
           A.phase = 'slam';
@@ -243,10 +309,13 @@ export function buildDice(
         tmpQ.setFromEuler(tmpE.set(A.spin.x * 1.25 * dt, A.spin.y * 1.25 * dt, A.spin.z * 1.25 * dt));
         A.q.multiply(tmpQ);
         setQuat(A.q);
+        spot.intensity = SPOT_BASE * 1.8;
         onTrail?.(mesh.position);
         if (k >= 1) {
           mesh.position.copy(A.land);
           onImpact?.(A.land.clone().add(new THREE.Vector3(0, 0.1, 0)));
+          flash.position.copy(A.land).add(new THREE.Vector3(0, 0.35, 0));
+          flashT = 0;
           mesh.scale.set(1.3, 0.62, 1.3); // impact squash
           A.phase = 'bounces';
           A.t = 0;
@@ -261,6 +330,7 @@ export function buildDice(
         );
         const e = easeOut(k);
         mesh.scale.set(1.3 - 0.3 * e, 0.62 + 0.38 * e, 1.3 - 0.3 * e);
+        spot.intensity = SPOT_BASE * (1 + 0.3 * (1 - k));
         // tumble resolves into the true face while a dying wobble plays out
         mesh.quaternion.slerpQuaternions(A.q, A.qTarget, easeInOut(k));
         tmpQ.setFromAxisAngle(A.wobbleAxis, (1 - k) * 0.9 * Math.sin(k * Math.PI * 3));
@@ -280,6 +350,7 @@ export function buildDice(
         // settle: lock the true face with a tiny victory pop
         const k = Math.min(1, A.t / D_SETTLE);
         setQuat(A.qTarget);
+        spot.intensity = SPOT_BASE;
         const pop = Math.sin(k * Math.PI);
         mesh.scale.set(1 - 0.07 * pop, 1 + 0.14 * pop, 1 - 0.07 * pop);
         if (k >= 1) {
@@ -287,9 +358,11 @@ export function buildDice(
           rest.copy(A.land);
           const r = A.resolve;
           anim = null;
+          idle = true;
           onLanded?.();
           r();
         }
+      }
       }
     },
   };

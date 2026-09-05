@@ -204,6 +204,17 @@ const game = new Game(canvas, sound, {
     pushHistory(v);
     $('hint').classList.add('hidden');
     announce(`${p.name} rolled ${v}.`);
+    if (!REDUCED) {
+      // center-screen result punch — gold erupts for a six
+      const flash = $('roll-flash');
+      $('roll-flash-num').textContent = String(v);
+      flash.classList.toggle('six', v === 6);
+      flash.classList.remove('hidden', 'show');
+      void flash.offsetWidth;
+      flash.classList.add('show');
+      window.clearTimeout((flash as unknown as { _t?: number })._t);
+      (flash as unknown as { _t?: number })._t = window.setTimeout(() => flash.classList.add('hidden'), 980);
+    }
     if (v === 6) toast(`✨ ${p.name} rolled a 6!`);
   },
   onLog: (msg, kind) => {
@@ -411,6 +422,8 @@ function doRoll() {
   void game.rollDice();
 }
 $('btn-roll').addEventListener('click', doRoll);
+// the die hops hello when you hover ROLL — delight before the throw
+($('btn-roll') as HTMLButtonElement).addEventListener('mouseenter', () => game.nudgeDice());
 
 function cycleCamera() {
   const btns = [...document.querySelectorAll<HTMLElement>('.seg button')];

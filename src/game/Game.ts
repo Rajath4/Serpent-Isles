@@ -88,6 +88,7 @@ export class Game {
   private trackFn: (() => THREE.Vector3) | null = null;
   private trackOff = new THREE.Vector3(2.6, 3.8, 4.2);
   private lastInteract = -1000;
+  private timeScale = 1;
   private sound: SoundBank;
   private cb: Callbacks;
 
@@ -139,10 +140,12 @@ export class Game {
     this.tokens = buildTokens(this.scene, PLAYER_DEFS);
     this.dice = buildDice(
       this.scene,
-      () => this.sound.diceLand(),
+      () => this.sound.settleClick(),
       (s) => this.sound.bounce(s),
       (pos) => this.fx.burst(pos, { color: 0xffd76e, count: 2, speed: 0.7, up: 0.5, life: 0.45, size: 0.22, gravity: 0.6 }),
       (pos) => {
+        this.timeScale = 0.35; // impact slow-mo — the world holds its breath
+        this.sound.diceLand(); // the thud lands WITH the die now
         this.fx.ring(pos, 0xffd76e, 1.7, 0.7);
         this.fx.burst(pos, { color: 0xffe1a1, count: 18, speed: 2.4, up: 2.6, life: 0.7, size: 0.3 });
       },
@@ -210,7 +213,11 @@ export class Game {
     const clock = new THREE.Clock();
     const loop = () => {
       requestAnimationFrame(loop);
-      const dt = Math.min(clock.getDelta(), 0.05);
+      const rawDt = Math.min(clock.getDelta(), 0.05);
+      // impact slow-mo eases back to full speed — tweens, dice, particles and
+      // camera all breathe together, so the world never tears
+      this.timeScale += (1 - this.timeScale) * Math.min(1, rawDt * 4.5);
+      const dt = Math.max(0.0001, rawDt * this.timeScale);
       this.elapsed += dt;
       const t = this.elapsed;
       for (let i = tweens.length - 1; i >= 0; i--) {
@@ -361,6 +368,11 @@ export class Game {
     if (on && !this.busy && this.players.length) this.flyOverview();
   }
 
+  /** Playful die hop (hovering ROLL). The die itself guards idle/rolling. */
+  nudgeDice() {
+    this.dice.nudge();
+  }
+
   /** Broadcast home: tilted-top view reading the whole board + dice pad. */
   private flyOverview() {
     const s = this.camera.aspect < 0.9 ? 1.55 : this.camera.aspect < 1.3 ? 1.2 : 1;
@@ -452,8 +464,10 @@ export class Game {
       // nearly locked — the 0.3s shiver then lands exactly on arrival,
       // the launch the instant the frame settles. Already framed? No wait at all.
       this.frameDice();
+      this.sound.charge();
       await this.waitForCamera(0.3);
     }
+    setTimeout(() => this.sound.whoosh(), 280); // meets the launch mid-shiver
     await this.dice.roll(value);
     this.cb.onDice(value, player);
     this.board.pulse(Math.max(1, player.square));

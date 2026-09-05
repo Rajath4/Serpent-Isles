@@ -94,6 +94,24 @@ export class SoundBank {
     this.tone(210 + Math.random() * 120, 0.07, 'triangle', 0.12 * s, 0, 160);
   }
 
+  /** Rising shimmer while the die charges under the camera glide. */
+  charge() {
+    this.tone(180, 0.65, 'sine', 0.06, 0, 880);
+    this.tone(360, 0.6, 'triangle', 0.03, 0.05, 1320);
+  }
+
+  /** Launch whoosh as the die leaves the velvet. */
+  whoosh() {
+    this.noise(0.35, 0.16, 0, 1200);
+    this.tone(140, 0.4, 'sawtooth', 0.05, 0, 720);
+  }
+
+  /** Tiny lock-click when the true face settles. */
+  settleClick() {
+    this.tone(520, 0.06, 'triangle', 0.14);
+    this.noise(0.03, 0.08, 0, 4000);
+  }
+
   hop(step: number) {
     const base = 420 + (step % 8) * 45;
     this.tone(base, 0.11, 'triangle', 0.2, 0, base * 1.5);

@@ -326,6 +326,33 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
 .race-dot.leader::after { content: "👑"; position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 11px; }
 #race-legend { display: flex; justify-content: center; gap: 12px; font-size: 11px; color: var(--muted); margin-top: 5px; }
 
+/* Roll result flash — the center-screen punch */
+#roll-flash {
+  position: fixed; left: 50%; top: 24%; transform: translate(-50%, -50%);
+  z-index: 34; pointer-events: none;
+}
+#roll-flash span {
+  display: block;
+  font-family: var(--serif); font-weight: 900;
+  font-size: clamp(76px, 13vw, 138px); line-height: 1;
+  color: #fff8e8;
+  text-shadow: 0 4px 30px rgba(0,0,0,0.65), 0 0 60px rgba(243,207,122,0.45);
+}
+#roll-flash.six span {
+  background: linear-gradient(180deg, #fff3d2 15%, var(--gold) 50%, #ff9a5c 90%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 4px 26px rgba(243,207,122,0.55));
+}
+#roll-flash.show span { animation: rollpop 0.95s cubic-bezier(0.2, 0.9, 0.25, 1.15) forwards; }
+@keyframes rollpop {
+  0% { opacity: 0; transform: scale(0.35) rotate(-10deg); }
+  16% { opacity: 1; transform: scale(1.14) rotate(2deg); }
+  30% { transform: scale(1) rotate(0deg); }
+  72% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(1.06) translateY(-18px); }
+}
+
 /* Hover inspector chip */
 #hover-chip {
   position: fixed; z-index: 30; pointer-events: none;
