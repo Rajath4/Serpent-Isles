@@ -15,6 +15,44 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#0b1035" />
+    <style>
+      /* Critical first-paint splash: inline so the launch is branded before ANY
+         JS or stylesheet arrives (no white flash, no raw-HTML flicker). */
+      html, body { height: 100%; }
+      body {
+        margin: 0; background: #0b1035; color: #f4ecd9;
+        font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+        overflow: hidden;
+      }
+      #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+      #loader {
+        position: fixed; inset: 0; z-index: 100;
+        display: flex; flex-direction: column; gap: 10px;
+        align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at 50% 35%, #232055 0%, #0b1035 65%);
+        transition: opacity 0.6s ease;
+      }
+      #loader.done { opacity: 0; pointer-events: none; }
+      #loader .loader-sigil { font-size: 54px; animation: isle-bob 1.6s ease-in-out infinite; }
+      #loader p { color: #a99fc7; letter-spacing: 0.2em; text-transform: uppercase; font-size: 12px; margin: 0; }
+      #loader .loader-bar { width: 220px; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; }
+      #loader .loader-bar span {
+        display: block; height: 100%; width: 40%; border-radius: 4px;
+        background: linear-gradient(90deg, #b8892e, #f3cf7a);
+        animation: isle-slide 1.1s ease-in-out infinite;
+      }
+      #loader-error { display: none; text-align: center; max-width: 420px; padding: 0 20px; }
+      #loader-error.show { display: block; }
+      #loader-error .err-title { color: #ff8fa0; font-weight: 800; margin: 14px 0 6px; }
+      #loader-error .err-msg { color: #a99fc7; font-size: 12px; margin: 0 0 14px; }
+      #loader-error button {
+        border: 0; cursor: pointer; border-radius: 12px; padding: 12px 24px;
+        background: linear-gradient(135deg, #ffe1a1, #f3cf7a 45%, #b8892e);
+        color: #241a05; font-weight: 900; font-size: 14px;
+      }
+      @keyframes isle-slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+      @keyframes isle-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    </style>
     <script>
       // Boot trap: runs before the game module. Any load/eval/render error is
       // captured and shown INSIDE the loader — the isles never hang silently.
