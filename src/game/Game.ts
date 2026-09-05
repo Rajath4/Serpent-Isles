@@ -1,6 +1,7 @@
 // ── Game orchestrator: scene, cameras, turns, cinematic movement ────────────
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildEnvironment } from './environment';
 import { buildBoard, type BoardHandles } from './board';
 import { buildSnakes, type SnakeHandles } from './snakes';
@@ -99,6 +100,14 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
+
+    // studio reflections for jewels, gold & clearcoat — kept low to protect the dusk mood
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    if ('environmentIntensity' in this.scene) {
+      (this.scene as THREE.Scene & { environmentIntensity: number }).environmentIntensity = 0.35;
+    }
+    pmrem.dispose();
 
     this.scene.background = new THREE.Color(0x0b1035);
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 500);
