@@ -68,7 +68,10 @@ export class Game {
   private ladders: LadderHandles;
   private tokens!: TokenHandles;
   private dice: DiceHandles;
-  private env: { update: (t: number, dt: number) => void };
+  private env: {
+    update: (t: number, dt: number) => void;
+    fadeOccluders: (camPos: THREE.Vector3, lookAt: THREE.Vector3) => void;
+  };
   private fx: Effects;
   private marker: THREE.Group;
   private markerGlow: THREE.Sprite;
@@ -286,6 +289,8 @@ export class Game {
         }
       }
       this.controls.update();
+      // foliage can never block the lens — ghost whatever stands in the way
+      this.env.fadeOccluders(this.camera.position, this.controls.target);
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -363,10 +368,10 @@ export class Game {
     this.flyTo(new THREE.Vector3(0, 16.5 * s, 8.5 * s), new THREE.Vector3(0.8, 0, 1.2), 1.5);
   }
 
-  /** Dice close-up over the velvet pad — a gentle 1s glide, never a whip. */
+  /** Dice close-up: shot from open water, zero foliage in the lane. */
   private frameDice() {
     this.trackFn = null;
-    this.flyTo(new THREE.Vector3(5.6, 4.8, 13.0), new THREE.Vector3(8.8, 0.5, 8.2), 1.0);
+    this.flyTo(new THREE.Vector3(15.5, 4.2, 5.2), new THREE.Vector3(10.4, 0.5, 4.6), 1.0);
   }
 
   private flyTo(pos: THREE.Vector3, tgt: THREE.Vector3, dur: number) {

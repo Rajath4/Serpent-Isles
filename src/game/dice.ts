@@ -83,8 +83,9 @@ export interface DiceHandles {
 }
 
 const REST_Y = 0.65; // die rests ON the velvet, not floating above it
-const PAD_X = 9.2;
-const PAD_Z = 8.6;
+// dice stage: open ground with a clear over-water camera lane (no trees in frame)
+const PAD_X = 10.6;
+const PAD_Z = 4.6;
 
 const D_ANTICIPATE = 0.3;
 const D_LAUNCH = 0.55;

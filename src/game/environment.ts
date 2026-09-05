@@ -3,6 +3,8 @@ import * as THREE from 'three';
 
 export interface EnvHandles {
   update: (t: number, dt: number) => void;
+  /** Ghost any foliage standing between the lens and the action. Never a blocked view. */
+  fadeOccluders: (camPos: THREE.Vector3, lookAt: THREE.Vector3) => void;
 }
 
 function skyTexture(): THREE.CanvasTexture {
@@ -129,17 +131,23 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x27a5a0, roughness: 0.7 });
   const treePositions: Array<[number, number, number]> = [
     [-12.4, 0, 6.5], [12.2, 0, 7.2], [-11.6, 0, -7.4], [11.8, 0, -6.8],
-    [-6.5, 0, 12.6], [6.8, 0, 12.4], [-7.2, 0, -12.4], [7.4, 0, -12.2],
+    [-6.5, 0, 12.6], [-3.8, 0, 13.4], [-7.2, 0, -12.4], [7.4, 0, -12.2],
   ];
   const trees = new THREE.Group();
+  // per-tree material clones so the occlusion system can ghost trees individually
+  const occluders: Array<{ root: THREE.Group; mats: THREE.MeshStandardMaterial[]; cur: number; tgt: number }> = [];
   treePositions.forEach(([x, _y, z], i) => {
     const t = new THREE.Group();
+    const trunkM = trunkMat.clone();
+    const leafM = (i % 2 ? leafMat : leafMat2).clone();
+    trunkM.transparent = true;
+    leafM.transparent = true;
     const h = 1.6 + (i % 3) * 0.5;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, h, 8), trunkMat);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, h, 8), trunkM);
     trunk.position.y = h / 2;
     trunk.castShadow = true;
     t.add(trunk);
-    const lm = i % 2 ? leafMat : leafMat2;
+    const lm = leafM;
     for (let k = 0; k < 3; k++) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(1.05 - k * 0.24, 1.0, 9), lm);
       cone.position.y = h + 0.35 + k * 0.62;
@@ -148,9 +156,31 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     }
     t.position.set(x, 0, z);
     t.rotation.y = i * 1.3;
+    t.traverse((o) => {
+      o.userData.occRoot = t;
+    });
     trees.add(t);
+    occluders.push({ root: t, mats: [trunkM, leafM], cur: 1, tgt: 1 });
   });
   scene.add(trees);
+
+  const occRay = new THREE.Raycaster();
+  const occDir = new THREE.Vector3();
+  function fadeOccluders(camPos: THREE.Vector3, lookAt: THREE.Vector3) {
+    occDir.subVectors(lookAt, camPos);
+    const dist = occDir.length();
+    if (dist < 1e-3) return;
+    occDir.normalize();
+    occRay.set(camPos, occDir);
+    occRay.far = Math.max(0.1, dist - 0.8);
+    const hits = occRay.intersectObjects(trees.children, true);
+    const blocked = new Set<THREE.Object3D>();
+    for (const h of hits) {
+      const root = h.object.userData.occRoot as THREE.Object3D | undefined;
+      if (root) blocked.add(root);
+    }
+    for (const oc of occluders) oc.tgt = blocked.has(oc.root) ? 0.1 : 1;
+  }
 
   // — Glowing crystals —
   const crystalMat = new THREE.MeshStandardMaterial({
@@ -295,7 +325,18 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
         if (c.position.x > 130) c.position.x = -130;
       });
       trees.rotation.y = Math.sin(t * 0.05) * 0.01;
+      // ease foliage ghosts toward their targets (occlusion fade)
+      for (const oc of occluders) {
+        oc.cur += (oc.tgt - oc.cur) * Math.min(1, dt * 6);
+        if (Math.abs(oc.tgt - oc.cur) < 0.01) oc.cur = oc.tgt;
+        for (const m of oc.mats) m.opacity = oc.cur;
+        const solid = oc.cur > 0.5;
+        oc.root.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = solid;
+        });
+      }
     },
+    fadeOccluders,
   };
 }
 
