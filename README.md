@@ -30,6 +30,8 @@ npm run preview  # serve dist on :4173
 1. Pick 2–4 players, name your crew, choose house rules → **Set Sail**.
 2. Current player hits **ROLL DICE** (or `Space`), pass the device around.
 3. Gold rings = ladders up · red rings = serpents down. First to **100** takes the crown.
+4. **Hover any tile** to spotlight its serpent or ladder while the rest falls quiet;
+   the **🐍 button** fades (👁 ghost) or hides all routes for a clean, focused board.
 
 ## 🧱 Project layout
 

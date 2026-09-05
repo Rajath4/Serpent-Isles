@@ -3,6 +3,7 @@ import './style.css';
 import { Game, type PlayerState } from './game/Game';
 import { SoundBank } from './game/audio';
 import { PLAYER_DEFS, SNAKES, LADDERS, type Rules } from './game/constants';
+import type { RouteMode } from './game/snakes';
 
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
@@ -279,25 +280,52 @@ setInterval(() => {
 let playerCount = 2;
 const defaultNames = ['Ruby', 'Azure', 'Ember', 'Jade'];
 
-function renderNameInputs() {
+interface SavedCrew {
+  names: string[];
+  rules: Rules;
+}
+function loadCrew(): SavedCrew | null {
+  try {
+    const raw = localStorage.getItem('serpent-crew');
+    return raw ? (JSON.parse(raw) as SavedCrew) : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderNameInputs(saved: string[] = []) {
   const wrap = $('names');
   wrap.innerHTML = '';
   for (let i = 0; i < playerCount; i++) {
     const def = PLAYER_DEFS[i];
     const row = document.createElement('div');
     row.className = 'name-row';
-    const hex = `#${def.color.toString(16).padStart(6, '0')}`;
+    const hex = hexOf(i);
     row.innerHTML = `<i style="background:${hex};color:${hex}"></i>`;
     const input = document.createElement('input');
     input.maxLength = 12;
-    input.value = defaultNames[i];
+    input.value = saved[i] ?? defaultNames[i];
     input.placeholder = `Player ${i + 1} name`;
     input.setAttribute('aria-label', `Player ${i + 1} name`);
     row.appendChild(input);
     wrap.appendChild(row);
   }
 }
-renderNameInputs();
+
+// restore last crew + rules
+const savedCrew = loadCrew();
+if (savedCrew) {
+  playerCount = Math.min(4, Math.max(2, savedCrew.names.length || 2));
+  document.querySelectorAll('.count-row button').forEach((x) =>
+    x.classList.toggle('on', Number((x as HTMLElement).dataset.count) === playerCount),
+  );
+  ($('rule-exact') as HTMLInputElement).checked = savedCrew.rules.exactFinish;
+  ($('rule-six') as HTMLInputElement).checked = savedCrew.rules.extraOnSix;
+  ($('rule-start') as HTMLInputElement).checked = savedCrew.rules.startOnSix;
+  renderNameInputs(savedCrew.names);
+} else {
+  renderNameInputs();
+}
 
 document.querySelectorAll('.count-row button').forEach((b) => {
   b.addEventListener('click', () => {
@@ -305,7 +333,8 @@ document.querySelectorAll('.count-row button').forEach((b) => {
     document.querySelectorAll('.count-row button').forEach((x) => x.classList.remove('on'));
     b.classList.add('on');
     playerCount = Number((b as HTMLElement).dataset.count);
-    renderNameInputs();
+    const cur = [...document.querySelectorAll<HTMLInputElement>('#names input')].map((i) => i.value);
+    renderNameInputs(cur);
   });
 });
 
@@ -350,6 +379,11 @@ function resetMatchChrome() {
 function startMatch(names: string[], rules: Rules) {
   lastNames = [...names];
   lastRules = { ...rules };
+  try {
+    localStorage.setItem('serpent-crew', JSON.stringify({ names, rules }));
+  } catch {
+    /* private mode — play on regardless */
+  }
   renderPlayerCards(names);
   resetMatchChrome();
   $('setup').classList.add('hidden');
@@ -420,6 +454,34 @@ document.querySelectorAll('.seg button').forEach((b) => {
 });
 
 // ── top buttons ────────────────────────────────────────────────────────────
+const ROUTE_ICON: Record<RouteMode, string> = { full: '🐍', ghost: '👻', hidden: '🚫' };
+let routeMode: RouteMode = 'full';
+try {
+  const saved = localStorage.getItem('serpent-routes') as RouteMode | null;
+  if (saved && ROUTE_ICON[saved]) routeMode = saved;
+} catch {
+  /* ignore */
+}
+game.setRouteMode(routeMode);
+$('btn-routes').textContent = ROUTE_ICON[routeMode];
+$('btn-routes').addEventListener('click', () => {
+  sound.click();
+  routeMode = routeMode === 'full' ? 'ghost' : routeMode === 'ghost' ? 'hidden' : 'full';
+  game.setRouteMode(routeMode);
+  ($('btn-routes') as HTMLButtonElement).textContent = ROUTE_ICON[routeMode];
+  try {
+    localStorage.setItem('serpent-routes', routeMode);
+  } catch {
+    /* ignore */
+  }
+  toast(
+    routeMode === 'full'
+      ? '🐍 Routes in full color'
+      : routeMode === 'ghost'
+        ? '👻 Routes ghosted — hover a tile to spotlight'
+        : '🚫 Routes hidden — pure board focus',
+  );
+});
 $('btn-sound').addEventListener('click', (e) => {
   const btn = e.currentTarget as HTMLButtonElement;
   const muted = !sound.muted;

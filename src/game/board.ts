@@ -14,43 +14,45 @@ function numberTexture(n: number, dark: boolean, special: 'start' | 'finish' | '
   const c = document.createElement('canvas');
   c.width = c.height = s;
   const g = c.getContext('2d')!;
-  // base
-  const base = dark ? '#14505c' : '#f1e6cf';
-  const edge = dark ? '#0d3540' : '#d9c9a6';
+  // hushed, low-contrast palette — the board is a stage, not the show
+  const base = dark ? '#57757c' : '#e9dfc6';
   g.fillStyle = base;
   g.fillRect(0, 0, s, s);
-  // subtle radial sheen
   const rg = g.createRadialGradient(s / 2, s / 2, 10, s / 2, s / 2, s * 0.75);
-  rg.addColorStop(0, 'rgba(255,255,255,0.20)');
-  rg.addColorStop(1, 'rgba(0,0,0,0.14)');
+  rg.addColorStop(0, 'rgba(255,255,255,0.12)');
+  rg.addColorStop(1, 'rgba(0,0,0,0.10)');
   g.fillStyle = rg;
   g.fillRect(0, 0, s, s);
-  // inner border
-  g.strokeStyle = special === 'start' || special === 'finish' ? '#ffcf6e' : edge;
-  g.lineWidth = special ? 14 : 8;
-  const m = 14;
-  g.strokeRect(m, m, s - m * 2, s - m * 2);
-  // corner motif for snake / ladder
-  if (special === 'snake' || special === 'ladder') {
-    g.font = '44px serif';
-    g.textAlign = 'right';
-    g.textBaseline = 'top';
-    g.fillStyle = special === 'snake' ? (dark ? '#ff9aa8' : '#c22747') : dark ? '#ffd98a' : '#9a6a12';
-    g.fillText(special === 'snake' ? '◉' : '≣', s - 26, 22);
-  }
-  // number
+  // hairline inner border
   const isGold = special === 'start' || special === 'finish';
-  g.fillStyle = isGold ? '#7a4d00' : dark ? '#f4ecd9' : '#274b53';
-  g.font = `700 ${n >= 100 ? 96 : 118}px Georgia, serif`;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.shadowColor = 'rgba(0,0,0,0.25)';
-  g.shadowBlur = 6;
-  g.fillText(String(n), s / 2, s / 2 + 8);
+  g.strokeStyle = isGold ? '#a8842f' : dark ? 'rgba(255,255,255,0.20)' : 'rgba(90,70,40,0.25)';
+  g.lineWidth = isGold ? 8 : 4;
+  const m = 12;
+  g.strokeRect(m, m, s - m * 2, s - m * 2);
+
+  const ink = isGold ? '#6b4a08' : dark ? 'rgba(244,236,217,0.92)' : 'rgba(58,80,86,0.88)';
   if (isGold) {
-    g.font = `700 30px Georgia, serif`;
-    g.fillStyle = '#7a4d00';
-    g.fillText(special === 'start' ? '★ START' : '★ CROWN', s / 2, s - 44);
+    // landmark tiles keep a centered, ceremonial treatment
+    g.fillStyle = ink;
+    g.font = `700 ${n >= 100 ? 84 : 104}px Georgia, serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(String(n), s / 2, s / 2 - 6);
+    g.font = `700 28px Georgia, serif`;
+    g.fillText(special === 'start' ? '★ START' : '★ CROWN', s / 2, s - 46);
+  } else {
+    // corner numbers stay readable under tokens, snakes & ladders
+    g.fillStyle = ink;
+    g.font = '700 58px Georgia, serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'top';
+    g.fillText(String(n), 24, 18);
+    if (special === 'snake' || special === 'ladder') {
+      g.font = '30px serif';
+      g.textAlign = 'right';
+      g.fillStyle = special === 'snake' ? (dark ? '#f2a3b1' : '#b02342') : dark ? '#f4d98c' : '#8a6410';
+      g.fillText(special === 'snake' ? '◉' : '≣', s - 24, 24);
+    }
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -125,8 +127,8 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     group.add(gem);
   });
 
-  // — Endpoint rings: gold = ladder foot, red = snake head —
-  const ringGeo = new THREE.TorusGeometry(0.32, 0.045, 10, 40);
+  // — Endpoint rings: gold = ladder foot, red = snake head (slim, quiet) —
+  const ringGeo = new THREE.TorusGeometry(0.27, 0.035, 8, 36);
   const ladderRingMat = new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xcc8a00, emissiveIntensity: 0.9, metalness: 0.7, roughness: 0.3 });
   const snakeRingMat = new THREE.MeshStandardMaterial({ color: 0xff6b81, emissive: 0xcc0033, emissiveIntensity: 0.9, metalness: 0.3, roughness: 0.4 });
   Object.keys(LADDERS).forEach((k) => {

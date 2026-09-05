@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildEnvironment } from './environment';
 import { buildBoard, type BoardHandles } from './board';
 import { buildSnakes, type SnakeHandles } from './snakes';
+import type { RouteMode } from './snakes';
 import { buildLadders, type LadderHandles } from './ladders';
 import { buildTokens, type TokenHandles } from './tokens';
 import { buildDice, type DiceHandles } from './dice';
@@ -161,6 +162,7 @@ export class Game {
       if (this.hovered !== null) {
         this.hovered = null;
         this.cb.onHover(null);
+        this.applyHoverFocus(null);
       }
     });
     window.addEventListener('pointerup', () => {
@@ -200,9 +202,9 @@ export class Game {
         const p = this.players[this.current];
         const obj = this.tokens.objects.get(p.def.id);
         if (obj && !this.busy) {
-          const want = new THREE.Vector3(obj.position.x + 3.4, 5.4, obj.position.z + 6.2);
+          const want = new THREE.Vector3(obj.position.x + 4.0, 6.6, obj.position.z + 7.6);
           this.camera.position.lerp(want, 1 - Math.pow(0.001, dt));
-          this.controls.target.lerp(new THREE.Vector3(obj.position.x, 0.6, obj.position.z), 1 - Math.pow(0.0005, dt));
+          this.controls.target.lerp(new THREE.Vector3(obj.position.x, 0.4, obj.position.z), 1 - Math.pow(0.0005, dt));
         }
       }
       this.env.update(t, dt);
@@ -235,6 +237,7 @@ export class Game {
         const sq = hits.length ? (hits[0].object.userData.square as number) : null;
         if (sq !== this.hovered) {
           this.hovered = sq;
+          this.applyHoverFocus(sq);
           this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
         } else if (sq !== null) {
           this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
@@ -295,13 +298,52 @@ export class Game {
       const p = this.players[this.current];
       const obj = p ? this.tokens.objects.get(p.def.id) : undefined;
       const at = obj ? obj.position : new THREE.Vector3(0, 0, 0);
-      this.flyTo(new THREE.Vector3(at.x + 3.4, 5.4, at.z + 6.2), new THREE.Vector3(at.x, 0.6, at.z), 1.4);
+      this.flyTo(new THREE.Vector3(at.x + 4.0, 6.6, at.z + 7.6), new THREE.Vector3(at.x, 0.4, at.z), 1.4);
     }
     // 'free' → leave camera where it is
   }
 
   private flyTo(pos: THREE.Vector3, tgt: THREE.Vector3, dur: number) {
     this.camTween = { t: 0, dur, p0: this.camera.position.clone(), p1: pos.clone(), t0: this.controls.target.clone(), t1: tgt.clone() };
+  }
+
+  /** Spotlight the route(s) touching a square; everything else falls back. */
+  private applyHoverFocus(sq: number | null) {
+    let snakeHead: number | null = null;
+    let ladderFoot: number | null = null;
+    if (sq !== null) {
+      if (SNAKES[sq] !== undefined) snakeHead = sq;
+      else {
+        for (const [h, t] of Object.entries(SNAKES)) {
+          if (t === sq) {
+            snakeHead = Number(h);
+            break;
+          }
+        }
+      }
+      if (LADDERS[sq] !== undefined) ladderFoot = sq;
+      else {
+        for (const [f, t] of Object.entries(LADDERS)) {
+          if (t === sq) {
+            ladderFoot = Number(f);
+            break;
+          }
+        }
+      }
+    }
+    this.snakes.spotlight(snakeHead);
+    this.ladders.spotlight(ladderFoot);
+    this.snakes.setDimAll(ladderFoot !== null);
+    this.ladders.setDimAll(snakeHead !== null);
+  }
+
+  /** Global route visibility: full detail, ghost outlines, or board-only. */
+  routeMode: RouteMode = 'full';
+
+  setRouteMode(m: RouteMode) {
+    this.routeMode = m;
+    this.snakes.setRouteMode(m);
+    this.ladders.setRouteMode(m);
   }
 
   get activePlayer(): PlayerState | undefined {
@@ -429,8 +471,8 @@ export class Game {
     if (this.cameraMode === 'follow') {
       const obj = this.tokens.objects.get(p.def.id)!;
       this.flyTo(
-        new THREE.Vector3(obj.position.x + 3.4, 5.4, obj.position.z + 6.2),
-        new THREE.Vector3(obj.position.x, 0.6, obj.position.z), 1.0,
+        new THREE.Vector3(obj.position.x + 4.0, 6.6, obj.position.z + 7.6),
+        new THREE.Vector3(obj.position.x, 0.4, obj.position.z), 1.0,
       );
     }
     this.cb.onTurn(p, this.current);
