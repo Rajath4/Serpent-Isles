@@ -115,7 +115,12 @@ interface Entry {
   spikes: THREE.InstancedMesh;
   glowMat: THREE.SpriteMaterial;
   headGroup: THREE.Group;
+  tongueG: THREE.Group;
   tongueTips: THREE.Mesh[];
+  tongueBaseZ: number;
+  tongueTravel: number;
+  tongueExt: number;
+  r: number;
   phase: number;
 }
 
@@ -205,7 +210,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     const entry: Entry = {
       head, fadeMats: [], eyeMats: [], spikes: null as unknown as THREE.InstancedMesh,
       glowMat: null as unknown as THREE.SpriteMaterial,
-      headGroup: new THREE.Group(), tongueTips: [], phase: i * 1.7,
+      headGroup: new THREE.Group(), tongueG: null as unknown as THREE.Group,
+      tongueTips: [], tongueBaseZ: 0, tongueTravel: 1.1 * radius, tongueExt: 0,
+      r: radius, phase: i * 1.7,
     };
 
     // — body: clearcoat jewel skin with scale relief + head→tail gradient —
@@ -373,18 +380,24 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       hg.add(f);
     });
 
-    // slim forked tongue
+    // slim forked tongue riding its own mount — darts in/out like the real thing
     const tongueMat = track(entry, new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: 0xaa0022, emissiveIntensity: 0.9 }));
+    const tongueG = new THREE.Group();
+    tongueG.position.set(0, -0.3 * radius, 3.55 * radius);
+    hg.add(tongueG);
+    entry.tongueG = tongueG;
+    entry.tongueBaseZ = 3.55 * radius;
     const fork = new THREE.Mesh(
       new THREE.BoxGeometry(0.14 * radius, 0.05 * radius, 0.9 * radius), tongueMat,
     );
-    fork.position.set(0, -0.3 * radius, 3.7 * radius);
-    hg.add(fork);
+    fork.position.set(0, 0, 0.15 * radius);
+    tongueG.add(fork);
     [-1, 1].forEach((s) => {
       const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07 * radius, 0.5 * radius, 6), tongueMat);
       tip.rotation.x = Math.PI / 2;
-      tip.position.set(s * 0.16 * radius, -0.3 * radius, 4.35 * radius);
-      hg.add(tip);
+      tip.position.set(s * 0.16 * radius, 0, 0.95 * radius);
+      tip.userData.side = s;
+      tongueG.add(tip);
       entry.tongueTips.push(tip);
     });
 
@@ -434,14 +447,31 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       mode = m;
       refresh();
     },
-    update(t: number, _dt: number) {
+    update(t: number, dt: number) {
       if (mode === 'hidden') return;
       for (const e of entries) {
         const active = spot === null || spot === e.head;
         e.headGroup.position.y = BODY_Y + 0.2 + (active ? Math.sin(t * 2 + e.phase) * 0.03 : 0);
         e.headGroup.rotation.z = active ? Math.sin(t * 1.4 + e.phase) * 0.07 : 0;
-        const flick = 0.7 + (Math.sin(t * 5 + e.phase) * 0.5 + 0.5) * 0.5;
-        for (const tip of e.tongueTips) tip.scale.y = flick;
+        // tongue dart: a quick flick out every few seconds (staggered per snake),
+        // quivering while extended — then withdrawn into the snout. Only the
+        // living, spotlighted heads taste the air; dimmed ones rest.
+        const period = 3.4 + (e.phase % 2.1);
+        const lt = (t + e.phase * 2.13) % period;
+        let target = 0;
+        if (active && lt < 0.5) {
+          const k = lt / 0.5;
+          target = k < 0.28 ? 1 - Math.pow(1 - k / 0.28, 2) : k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45;
+        }
+        e.tongueExt += (target - e.tongueExt) * Math.min(1, dt * 10);
+        const ext = Math.max(0, e.tongueExt);
+        e.tongueG.position.z = e.tongueBaseZ - (1 - ext) * e.tongueTravel;
+        e.tongueG.rotation.y = ext * Math.sin(t * 28 + e.phase) * 0.09;
+        for (const tip of e.tongueTips) {
+          const s = tip.userData.side as number;
+          tip.position.x = s * 0.16 * e.r * (0.25 + 0.75 * ext); // fork opens as it darts
+          tip.scale.y = 0.7 + 0.5 * ext + (ext > 0.02 ? Math.sin(t * 32 + e.phase) * 0.12 * ext : 0);
+        }
         for (const m of e.eyeMats) m.emissiveIntensity = active ? 2.1 + Math.sin(t * 3 + e.phase) * 0.5 : 1.2;
       }
     },
