@@ -646,9 +646,21 @@ export class Game {
       });
       this.current = Math.max(0, Math.min(this.players.length - 1, s.current | 0));
       this.turnCount = Math.max(0, s.turnCount | 0);
-      this.players.forEach((p) =>
-        this.tokens.placeInstant(p.def.id, p.square, this.slotOf(p.square, p.def.id)),
-      );
+      // Distinct slots per square — slotOf() sees all sharers at once after a
+      // restore, so it would hand every sharer the SAME slot (overlap).
+      // Assign 0..n-1 in seat order per square instead; staging uses seat id.
+      const seenPerSquare = new Map<number, number>();
+      this.players.forEach((p) => {
+        let slot: number;
+        if (p.square < 1) {
+          slot = p.def.id;
+        } else {
+          const k = seenPerSquare.get(p.square) ?? 0;
+          slot = k;
+          seenPerSquare.set(p.square, k + 1);
+        }
+        this.tokens.placeInstant(p.def.id, p.square, slot);
+      });
       const cur = this.players[this.current];
       this.tokens.setActive(cur.def.id);
       const round = Math.floor(this.turnCount / Math.max(1, this.players.length)) + 1;

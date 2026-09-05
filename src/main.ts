@@ -40,6 +40,12 @@ renderDiceFace(6);
 
 // ── shared HUD helpers ─────────────────────────────────────────────────────
 const hexOf = (id: number) => `#${PLAYER_DEFS[id].color.toString(16).padStart(6, '0')}`;
+/** Escape user-controlled names before interpolating into innerHTML. */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
+  );
+}
 let matchStart = Date.now();
 let lastTurnName = '';
 let lastTurnWasCpu = false;
@@ -398,13 +404,13 @@ const game = new Game(canvas, sound, {
     const sixPct = stats.rolls ? Math.round((stats.sixes / stats.rolls) * 100) : 0;
     const rows = pls
       .map(
-        (p) => `<div class="stat"><b>${p.square}</b><small>${p.name}${p.isCPU ? ' 🤖' : ''} · 🎲${p.rolls} 🪜${p.ladders} 🐍${p.snakes}</small></div>`,
+        (p) => `<div class="stat"><b>${p.square}</b><small>${esc(p.name)}${p.isCPU ? ' 🤖' : ''} · 🎲${p.rolls} 🪜${p.ladders} 🐍${p.snakes}</small></div>`,
       )
       .join('');
     const mvps =
-      `<div class="stat"><b>🪜</b><small>Climber · ${most((p) => p.ladders).name}</small></div>` +
-      `<div class="stat"><b>🐍</b><small>Serpent-charmer · ${most((p) => p.snakes).name}</small></div>` +
-      `<div class="stat"><b>🍀</b><small>Fortune favors ${fortune.name} (+${fortune.ladders - fortune.snakes})</small></div>` +
+      `<div class="stat"><b>🪜</b><small>Climber · ${esc(most((p) => p.ladders).name)}</small></div>` +
+      `<div class="stat"><b>🐍</b><small>Serpent-charmer · ${esc(most((p) => p.snakes).name)}</small></div>` +
+      `<div class="stat"><b>🍀</b><small>Fortune favors ${esc(fortune.name)} (+${fortune.ladders - fortune.snakes})</small></div>` +
       `<div class="stat"><b>🎲</b><small>${stats.rolls} rolls · sixes ${sixPct}% (fair ≈17%)</small></div>` +
       `<div class="stat"><b>⏱️</b><small>${stats.turns} turns · round ${roundOf()} · ${elapsedStr()}</small></div>`;
     $('win-stats').innerHTML = rows + mvps;
@@ -452,12 +458,13 @@ const game = new Game(canvas, sound, {
     else if (LADDERS[sq] !== undefined) fate = ` <span class="fate-ladder">🪜 climbs to ${LADDERS[sq]}</span>`;
     else if (SNAKES[sq] !== undefined) fate = ` <span class="fate-snake">🐍 slides to ${SNAKES[sq]}</span>`;
     chip.innerHTML = `■ ${sq}${fate}`;
+    // Un-hide before measuring — display:none reports 0 and mis-clamps the first peek.
+    chip.classList.remove('hidden');
     // clamp inside the viewport — right/bottom-edge tiles must not push it off-screen
     const cw = chip.offsetWidth || 180;
     const ch = chip.offsetHeight || 34;
     chip.style.left = `${Math.min(Math.max(8, x), window.innerWidth - cw - 8)}px`;
     chip.style.top = `${Math.min(Math.max(8, y), window.innerHeight - ch - 8)}px`;
-    chip.classList.remove('hidden');
   },
   // render budgeting: a menu overlay covers the arena
   uiCovered: () =>
@@ -621,10 +628,19 @@ function renderPlayerCards(names: string[], cpu: boolean[] = []) {
     card.className = 'pcard' + (i === 0 ? ' active' : '') + (isCpu ? ' cpu' : '');
     card.dataset.id = String(def.id);
     card.style.setProperty('--pc', hex);
-    card.innerHTML = `<div class="avatar">${isCpu ? '🤖' : (n || def.name).slice(0, 1).toUpperCase()}</div>
-      <div class="meta"><b></b><small class="pos" data-id="${def.id}">⛵ at bay</small></div>`;
-    const bEl = card.querySelector('b')!;
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = isCpu ? '🤖' : (n || def.name).slice(0, 1).toUpperCase();
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const bEl = document.createElement('b');
     bEl.textContent = n || def.name;
+    const posEl = document.createElement('small');
+    posEl.className = 'pos';
+    posEl.dataset.id = String(def.id);
+    posEl.textContent = '⛵ at bay';
+    meta.append(bEl, posEl);
+    card.append(avatar, meta);
     if (isCpu) {
       const tag = document.createElement('span');
       tag.className = 'cputag';
@@ -895,6 +911,18 @@ function closePause() {
   const p = game.activePlayer;
   if (p && game.players.length) scheduleCpuRoll(p);
 }
+// Backgrounding mid-match (call, notification, tab switch) drops anchor —
+// the CPU timer freezes and the rAF loop stalls, so resume is always clean.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  if ($('setup').classList.contains('hidden') && $('win').classList.contains('hidden')) {
+    try {
+      openPause();
+    } catch {
+      /* still waters */
+    }
+  }
+});
 $('btn-continue').addEventListener('click', () => {
   sound.click();
   closePause();

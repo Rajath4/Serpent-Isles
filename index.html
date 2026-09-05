@@ -200,7 +200,7 @@
     <div id="win-flash" class="hidden" aria-hidden="true"></div>
 
     <!-- Setup screen -->
-    <div id="setup" class="overlay">
+    <div id="setup" class="overlay" role="dialog" aria-modal="true" aria-label="Crew setup">
       <div class="panel setup-panel">
         <p class="kicker">A cinematic local-multiplayer voyage · 2–4 players · one screen</p>
         <h1>Serpent <span>Isles</span></h1>
@@ -250,7 +250,7 @@
     </div>
 
     <!-- Win screen -->
-    <div id="win" class="overlay hidden">
+    <div id="win" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Victory">
       <div class="panel win-panel">
         <p class="kicker">👑 Victory</p>
         <h2 id="win-title">Ruby claims the crown!</h2>
@@ -264,7 +264,7 @@
     </div>
 
     <!-- Pause -->
-    <div id="pause" class="overlay hidden">
+    <div id="pause" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Paused">
       <div class="panel pause-panel">
         <p class="kicker">Dropped anchor</p>
         <h2>Paused</h2>
@@ -288,7 +288,7 @@
     </div>
 
     <!-- Help -->
-    <div id="help" class="overlay hidden">
+    <div id="help" class="overlay hidden" role="dialog" aria-modal="true" aria-label="How to play">
       <div class="panel help-panel">
         <h2>How to play</h2>
         <ol>
