@@ -2,7 +2,7 @@
 // head is merged by material (~22 draws → ~12 per snake) and micro-parts skip
 // the shadow pass. Identical look, identical behavior, far fewer draw calls.
 import * as THREE from 'three';
-import { mergeCompat } from './merge';
+import { mergeCompat, freeze } from './merge';
 import { Q } from './quality';
 import { SNAKES, TOP_Y, cellCenter } from './constants';
 import { makeGlowTexture } from './environment';
@@ -273,6 +273,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.castShadow = true;
     body.receiveShadow = true;
+    freeze(body);
     group.add(body);
 
     // — cream underbelly hugging the tile (presence only, no shadow cost) —
@@ -290,6 +291,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     );
     belly.position.y = -radius * 0.52;
     belly.receiveShadow = true;
+    freeze(belly);
     group.add(belly);
 
     // — dorsal spines, tapering toward the tail —
@@ -316,6 +318,8 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       mtx.compose(pos, q, scl);
       spikes.setMatrixAt(k, mtx);
     }
+    spikes.instanceMatrix.needsUpdate = true;
+    freeze(spikes);
     group.add(spikes);
     entry.spikes = spikes;
 
@@ -330,7 +334,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       );
       tailGeos.push(bead);
     });
-    group.add(new THREE.Mesh(mergeCompat(tailGeos), tailMat));
+    const tailMesh = new THREE.Mesh(mergeCompat(tailGeos), tailMat);
+    freeze(tailMesh);
+    group.add(tailMesh);
 
     // — head: ONE continuous lathe-turned predator skull, parts fused by material —
     const hg = entry.headGroup;
@@ -360,8 +366,12 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       bake(skullParts, new THREE.SphereGeometry(0.32 * R, 12, 10),
         s * 0.72 * R, 0.62 * R, 1.55 * R, 0, -s * 0.3, 0, 1.3, 0.45, 0.9);
     });
+    // throat bulge fused into the skull base — swallows the tube start so the
+    // joint can never gape, and saves a draw per serpent
+    bake(skullParts, new THREE.SphereGeometry(radius * 1.04, 14, 12), 0, 0, 0, 0, 0, 0, 1, 0.85, 1.3);
     const skull = new THREE.Mesh(mergeCompat(skullParts), skullMat);
     skull.castShadow = true;
+    freeze(skull);
     hg.add(skull);
 
     // cobra hood on a few individuals only
@@ -384,6 +394,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       bake(hoodGeos, new THREE.SphereGeometry(R, 18, 14), 0, 0, 0, 0, 0, 0, 1.6, 2.0, 0.55, hoodM);
       const hood = new THREE.Mesh(mergeCompat(hoodGeos), hoodMat);
       hood.castShadow = true;
+      freeze(hood);
       hg.add(hood);
       const hoodInGeos: THREE.BufferGeometry[] = [];
       bake(hoodInGeos, new THREE.SphereGeometry(R, 16, 12), 0, 0, 0.16 * R, 0, 0, 0, 1.24, 1.6, 0.45, hoodM);
@@ -391,7 +402,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
         bake(hoodInGeos, new THREE.SphereGeometry(0.2 * R, 10, 8),
           s * 0.55 * R, 0.55 * R, -0.52 * R, 0, 0, 0, 1, 1.3, 0.4, hoodM);
       });
-      hg.add(new THREE.Mesh(mergeCompat(hoodInGeos), hoodInnerMat));
+      const hoodIn = new THREE.Mesh(mergeCompat(hoodInGeos), hoodInnerMat);
+      freeze(hoodIn);
+      hg.add(hoodIn);
     }
 
     // one fused dark mask: sockets + pupils + nostrils (micro-parts, zero shadow cost)
@@ -404,7 +417,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
         s * 1.04 * R, 0.57 * R, 1.6 * R, 0, s * 0.33, 0);
       bake(darkGeos, new THREE.SphereGeometry(0.08 * R, 8, 6), s * 0.22 * R, 0.3 * R, 2.95 * R);
     });
-    hg.add(new THREE.Mesh(mergeCompat(darkGeos), darkMat));
+    const darkMask = new THREE.Mesh(mergeCompat(darkGeos), darkMat);
+    freeze(darkMask);
+    hg.add(darkMask);
 
     // jeweled amber eyes, fused pair
     const eyeMat = track(entry, new THREE.MeshStandardMaterial({
@@ -415,7 +430,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     [-1, 1].forEach((s) => {
       bake(eyeGeos, new THREE.SphereGeometry(0.3 * R, 14, 12), s * 0.95 * R, 0.55 * R, 1.35 * R);
     });
-    hg.add(new THREE.Mesh(mergeCompat(eyeGeos), eyeMat));
+    const eyes = new THREE.Mesh(mergeCompat(eyeGeos), eyeMat);
+    freeze(eyes);
+    hg.add(eyes);
 
     // fangs, fused pair
     const fangMat = track(entry, new THREE.MeshStandardMaterial({ color: 0xfff6e6, roughness: 0.2, metalness: 0.05 }));
@@ -424,7 +441,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       bake(fangGeos, new THREE.ConeGeometry(0.09 * R, 0.45 * R, 8),
         s * 0.4 * R, -0.35 * R, 2.7 * R, Math.PI - 0.12, 0, 0);
     });
-    hg.add(new THREE.Mesh(mergeCompat(fangGeos), fangMat));
+    const fangs = new THREE.Mesh(mergeCompat(fangGeos), fangMat);
+    freeze(fangs);
+    hg.add(fangs);
 
     // slim forked tongue, fused — the whole mount darts (position + sway carry it)
     const tongueMat = track(entry, new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: 0xaa0022, emissiveIntensity: 0.9 }));
@@ -438,14 +457,9 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     hg.add(tongue);
     entry.tongue = tongue;
 
-    // Stance: prowling forward off the neck — collar + throat swallow the tube
-    // start so the joint can never gape.
+    // Stance: prowling forward off the neck — the fused collar + throat swallow
+    // the tube start so head and body read as one continuous sculpt.
     const outward = curve.getTangent(0).setY(0).normalize().negate();
-    const throat = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.04, 14, 12), skullMat);
-    throat.position.copy(p0);
-    throat.scale.set(1, 0.85, 1.3);
-    throat.lookAt(p0.clone().add(outward));
-    group.add(throat);
 
     hg.position.set(a.x, BODY_Y + 0.2, a.z);
     hg.lookAt(a.x + outward.x * 4, BODY_Y + 0.55, a.z + outward.z * 4);
@@ -459,6 +473,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     const glow = new THREE.Sprite(glowMat);
     glow.scale.set(1.35, 1.35, 1);
     glow.position.set(a.x, BODY_Y + 0.3, a.z);
+    freeze(glow);
     group.add(glow);
     entry.glow = glow;
     entry.glowMat = glowMat;

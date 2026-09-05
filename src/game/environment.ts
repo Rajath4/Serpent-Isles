@@ -2,7 +2,7 @@
 // Perf: 13-scene-light rig cut to 6 (every forward light taxes ALL shaders);
 // static decor merged wherever per-object fading isn't needed.
 import * as THREE from 'three';
-import { mergeCompat } from './merge';
+import { mergeCompat, freeze } from './merge';
 import { Q } from './quality';
 
 export interface EnvHandles {
@@ -37,6 +37,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     new THREE.SphereGeometry(220, 32, 20),
     new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false, depthWrite: false }),
   );
+  freeze(sky);
   scene.add(sky);
 
   scene.fog = new THREE.Fog(0x2a2358, 55, 165);
@@ -67,13 +68,15 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     color: 0x14335e,
     roughness: 0.25,
     metalness: 0.55,
-    transparent: true,
+    // low tier skips the blend pass — 0.94 reads as opaque anyway
+    transparent: Q.tier !== 'low',
     opacity: 0.94,
   });
   const sea = new THREE.Mesh(seaGeo, seaMat);
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = -2.6;
   sea.receiveShadow = true;
+  freeze(sea);
   scene.add(sea);
 
   // Sea glow ring
@@ -83,6 +86,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = -2.45;
+  freeze(ring);
   scene.add(ring);
 
   // — Island platform (layered stone + grass rim) —
@@ -92,12 +96,14 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   rock.position.y = -1.7 - 0.15;
   rock.receiveShadow = true;
   rock.castShadow = true;
+  freeze(rock);
   island.add(rock);
 
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x2f9e6e, roughness: 0.8 });
   const grass = new THREE.Mesh(new THREE.CylinderGeometry(15.2, 15.0, 0.5, 48), grassMat);
   grass.position.y = -0.22;
   grass.receiveShadow = true;
+  freeze(grass);
   island.add(grass);
 
   const trimMat = new THREE.MeshStandardMaterial({
@@ -106,6 +112,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   const trim = new THREE.Mesh(new THREE.TorusGeometry(15.15, 0.12, 12, 96), trimMat);
   trim.rotation.x = Math.PI / 2;
   trim.position.y = 0.02;
+  freeze(trim);
   island.add(trim);
   scene.add(island);
 
@@ -117,6 +124,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   plinth.position.y = -0.28;
   plinth.receiveShadow = true;
   plinth.castShadow = true;
+  freeze(plinth);
   scene.add(plinth);
 
   const plinthGlow = new THREE.Mesh(
@@ -124,6 +132,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     new THREE.MeshBasicMaterial({ color: 0x38e0ff }),
   );
   plinthGlow.position.y = -0.42;
+  freeze(plinthGlow);
   scene.add(plinthGlow);
 
   // — Stylized palms / pines around the island —
@@ -146,6 +155,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     const h = 1.6 + (i % 3) * 0.5;
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, h, 8), trunkM);
     trunk.position.y = h / 2;
+    freeze(trunk);
     t.add(trunk);
     const lm = leafM;
     // canopy merged: 3 cones → 1 draw per tree (trunk shadow was invisible anyway)
@@ -157,6 +167,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     }
     const canopy = new THREE.Mesh(mergeCompat(canopyGeos), lm);
     canopy.castShadow = true;
+    freeze(canopy);
     t.add(canopy);
     t.position.set(x, 0, z);
     t.rotation.y = i * 1.3;
@@ -215,6 +226,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   });
   for (const [geos, mat] of [[crystalGeosA, crystalMat], [crystalGeosB, crystalMat2]] as const) {
     const merged = new THREE.Mesh(mergeCompat(geos), mat);
+    freeze(merged);
     scene.add(merged);
   }
 
@@ -245,8 +257,12 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
       scene.add(l);
     }
   });
-  scene.add(new THREE.Mesh(mergeCompat(poleGeos), poleMat));
-  scene.add(new THREE.Mesh(mergeCompat(bowlGeos), bowlMat));
+  const poles = new THREE.Mesh(mergeCompat(poleGeos), poleMat);
+  const bowls = new THREE.Mesh(mergeCompat(bowlGeos), bowlMat);
+  freeze(poles);
+  freeze(bowls);
+  scene.add(poles);
+  scene.add(bowls);
 
   // — Fireflies —
   const fireflyCount = Q.fireflies;
@@ -267,6 +283,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     blending: THREE.AdditiveBlending, depthWrite: false, map: makeGlowTexture(),
   });
   const fireflies = new THREE.Points(fGeo, fMat);
+  freeze(fireflies);
   scene.add(fireflies);
 
   // — Stars —
@@ -280,12 +297,14 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   }
   starGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
   const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.9, sizeAttenuation: false, transparent: true, opacity: 0.85, fog: false }));
+  freeze(stars);
   scene.add(stars);
 
   // — Low sun billboard on horizon —
   const sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowTexture(), color: 0xffc98a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   sunSpr.position.set(40, 9, -120);
   sunSpr.scale.set(46, 46, 1);
+  freeze(sunSpr);
   scene.add(sunSpr);
 
   // — Drifting clouds —

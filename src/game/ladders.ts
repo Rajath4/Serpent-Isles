@@ -1,6 +1,6 @@
 // ── Low-arched golden ladders: 2 draws each, per-route spotlight support ────
 import * as THREE from 'three';
-import { mergeCompat } from './merge';
+import { mergeCompat, freeze } from './merge';
 import { Q } from './quality';
 import { LADDERS, TOP_Y, cellCenter } from './constants';
 import type { RouteMode } from './snakes';
@@ -102,9 +102,12 @@ export function buildLadders(scene: THREE.Scene): LadderHandles {
     }
     const rails = new THREE.Mesh(mergeCompat(railGeos), railMat);
     rails.castShadow = true;
+    freeze(rails);
     group.add(rails);
     // rungs ride along — their shadows were sub-pixel, so they only receive presence
-    group.add(new THREE.Mesh(mergeCompat(rungGeos), rungMat));
+    const rungsMesh = new THREE.Mesh(mergeCompat(rungGeos), rungMat);
+    freeze(rungsMesh);
+    group.add(rungsMesh);
   });
 
   scene.add(group);

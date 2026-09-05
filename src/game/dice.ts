@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { easeOut, easeInOut } from './constants';
 import { Q } from './quality';
+import { freeze } from './merge';
 import { makeGlowTexture } from './environment';
 
 function pipTexture(v: number): THREE.CanvasTexture {
@@ -127,6 +128,7 @@ export function buildDice(
   pad.position.set(PAD_X, 0.11, PAD_Z);
   pad.receiveShadow = true;
   pad.castShadow = true;
+  freeze(pad);
   scene.add(pad);
   const padTrim = new THREE.Mesh(
     new THREE.TorusGeometry(1.55, 0.06, 10, 48),
@@ -134,6 +136,7 @@ export function buildDice(
   );
   padTrim.rotation.x = Math.PI / 2;
   padTrim.position.set(PAD_X, 0.24, PAD_Z);
+  freeze(padTrim);
   scene.add(padTrim);
 
   const DIE = 0.85;
@@ -148,6 +151,7 @@ export function buildDice(
     }),
   );
   body.castShadow = true;
+  freeze(body);
   mesh.add(body);
   // [value, position, rotation] — same pip convention as classic dice
   const faces: Array<[number, [number, number, number], [number, number, number]]> = [
@@ -165,6 +169,7 @@ export function buildDice(
     );
     decal.position.set(...pos);
     decal.rotation.set(...rot);
+    freeze(decal);
     mesh.add(decal);
   }
   const rest = new THREE.Vector3(PAD_X, REST_Y, PAD_Z);

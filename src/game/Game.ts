@@ -97,13 +97,19 @@ export class Game {
   private pointerNdc = new THREE.Vector2();
   private pointerClient = { x: 0, y: 0 };
   private pointerOnBoard = false;
+  private pointerDirty = false;
   private dragging = false;
   private hovered: number | null = null;
 
   // — auto director: top overview at rest, tracking on action, drift when idle —
   director = true;
-  private trackFn: (() => THREE.Vector3) | null = null;
+  private trackFn: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
   private trackOff = new THREE.Vector3(2.6, 3.8, 4.2);
+  // scratch vectors: the tracking shot allocates nothing at 60fps
+  private trackAnchor = new THREE.Vector3();
+  private trackWant = new THREE.Vector3();
+  private trackLook = new THREE.Vector3();
+  private readonly trackUp = new THREE.Vector3(0, 0.5, 0);
   private lastInteract = -1000;
   private timeScale = 1;
   // — silent performance governor: frame counter, shadow stride, adaptive res —
@@ -212,6 +218,7 @@ export class Game {
       this.pointerNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       this.pointerClient = { x: e.clientX, y: e.clientY };
       this.pointerOnBoard = true;
+      this.pointerDirty = true;
     });
     canvas.addEventListener('pointerleave', () => {
       this.pointerOnBoard = false;
@@ -277,16 +284,27 @@ export class Game {
       } else if (this.director && this.trackFn) {
         // action tracking shot — exponential ease, critically damped: it can
         // lag behind the action but never overshoot, so no seasickness
-        const anchor = this.trackFn();
-        this.camera.position.lerp(anchor.clone().add(this.trackOff), 1 - Math.exp(-dt / 0.32));
-        this.controls.target.lerp(anchor.clone().add(new THREE.Vector3(0, 0.5, 0)), 1 - Math.exp(-dt / 0.5));
+        const anchor = this.trackFn(this.trackAnchor);
+        this.camera.position.lerp(
+          this.trackWant.copy(anchor).add(this.trackOff),
+          1 - Math.exp(-dt / 0.32),
+        );
+        this.controls.target.lerp(
+          this.trackLook.copy(anchor).add(this.trackUp),
+          1 - Math.exp(-dt / 0.5),
+        );
       } else if (!this.director && this.cameraMode === 'follow' && this.players.length) {
         const p = this.players[this.current];
         const obj = this.tokens.objects.get(p.def.id);
         if (obj && !this.busy) {
-          const want = new THREE.Vector3(obj.position.x + 4.0, 6.6, obj.position.z + 7.6);
-          this.camera.position.lerp(want, 1 - Math.pow(0.001, dt));
-          this.controls.target.lerp(new THREE.Vector3(obj.position.x, 0.4, obj.position.z), 1 - Math.pow(0.0005, dt));
+          this.camera.position.lerp(
+            this.trackWant.set(obj.position.x + 4.0, 6.6, obj.position.z + 7.6),
+            1 - Math.pow(0.001, dt),
+          );
+          this.controls.target.lerp(
+            this.trackLook.set(obj.position.x, 0.4, obj.position.z),
+            1 - Math.pow(0.0005, dt),
+          );
         }
       }
       this.env.update(t, dt);
@@ -318,8 +336,16 @@ export class Game {
       } else {
         this.marker.visible = false;
       }
-      // hover inspector (every 2nd frame — 30Hz is plenty for a tooltip)
-      if ((this.frame & 1) === 0 && this.pointerOnBoard && !this.dragging && this.tiles.length) {
+      // hover inspector (30Hz, and only when the pointer or the camera moved)
+      const camSweeping = this.controls.autoRotate || this.camTween !== null || this.trackFn !== null;
+      if (
+        (this.frame & 1) === 0 &&
+        this.pointerOnBoard &&
+        !this.dragging &&
+        (this.pointerDirty || camSweeping) &&
+        this.tiles.length
+      ) {
+        this.pointerDirty = false;
         this.raycaster.setFromCamera(this.pointerNdc, this.camera);
         const hits = this.raycaster.intersectObjects(this.tiles, false);
         const sq = hits.length ? (hits[0].object.userData.square as number) : null;
@@ -332,9 +358,9 @@ export class Game {
         }
       }
       this.controls.update();
-      // foliage can never block the lens — ghost whatever stands in the way
-      // (offset stride from the hover raycast so both never fire together)
-      if ((this.frame & 1) === 1) this.env.fadeOccluders(this.camera.position, this.controls.target);
+      // foliage can never block the lens — ghost whatever stands in the way.
+      // every 4th frame is plenty (the fade itself is smoothed); offset from hover.
+      if ((this.frame & 3) === 1) this.env.fadeOccluders(this.camera.position, this.controls.target);
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -774,7 +800,7 @@ export class Game {
     const obj = this.tokenObj(p);
     if (this.director) {
       // tracking shot glued to the hopping champion
-      this.trackFn = () => obj.position.clone();
+      this.trackFn = (out) => out.copy(obj.position);
       this.trackOff.set(2.6, 3.8, 4.2);
     }
     const start = from === 0 ? new THREE.Vector3(-6.4, TOP_Y, 6.4) : null;
@@ -803,7 +829,7 @@ export class Game {
     this.fx.snakePoof(obj.position.clone().add(new THREE.Vector3(0, 0.6, 0)));
     if (this.director) {
       // low dramatic chase down the serpent's back
-      this.trackFn = () => obj.position.clone();
+      this.trackFn = (out) => out.copy(obj.position);
       this.trackOff.set(3.4, 2.8, 4.8);
     }
     const dest = this.tokens.tokenPos(tail, this.slotOf(tail, p.def.id));
@@ -828,7 +854,7 @@ export class Game {
     const dest = this.tokens.tokenPos(top, this.slotOf(top, p.def.id));
     this.fx.ladderSparkle(obj.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
     if (this.director) {
-      this.trackFn = () => obj.position.clone();
+      this.trackFn = (out) => out.copy(obj.position);
       this.trackOff.set(3.4, 2.8, 4.8);
     }
     await tween(1.5, (e) => {

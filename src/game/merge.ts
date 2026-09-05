@@ -21,3 +21,13 @@ export function mergeCompat(geos: THREE.BufferGeometry[]): THREE.BufferGeometry 
   }
   return out;
 }
+
+/**
+ * Freeze a static transform: skips the per-frame matrix compose for objects
+ * that never move (~400 of them). Call AFTER final placement; never touch
+ * position/rotation/scale afterwards (or call updateMatrix() manually).
+ */
+export function freeze(m: THREE.Object3D): void {
+  m.updateMatrix();
+  m.matrixAutoUpdate = false;
+}

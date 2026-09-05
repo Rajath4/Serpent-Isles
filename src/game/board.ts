@@ -2,7 +2,7 @@
 // Perf: 100 tile bodies are merged into ONE draw call; only the 100 printed
 // top skins stay individual (per-tile pulse glow needs its own material).
 import * as THREE from 'three';
-import { mergeCompat } from './merge';
+import { mergeCompat, freeze } from './merge';
 import { Q } from './quality';
 import { BOARD_N, CELL, TOP_Y, TILE_H, SNAKES, LADDERS, cellCenter } from './constants';
 
@@ -15,8 +15,14 @@ export interface BoardHandles {
   update: (t: number, dt: number) => void;
 }
 
-function numberTexture(n: number, dark: boolean, special: 'start' | 'finish' | 'snake' | 'ladder' | null): THREE.CanvasTexture {
-  const s = 256;
+function numberTexture(
+  n: number,
+  dark: boolean,
+  special: 'start' | 'finish' | 'snake' | 'ladder' | null,
+  size: number,
+): THREE.CanvasTexture {
+  const s = size;
+  const k = size / 256; // all artwork scales from the 256 master
   const c = document.createElement('canvas');
   c.width = c.height = s;
   const g = c.getContext('2d')!;
@@ -32,32 +38,32 @@ function numberTexture(n: number, dark: boolean, special: 'start' | 'finish' | '
   // hairline inner border
   const isGold = special === 'start' || special === 'finish';
   g.strokeStyle = isGold ? '#a8842f' : dark ? 'rgba(255,255,255,0.20)' : 'rgba(90,70,40,0.25)';
-  g.lineWidth = isGold ? 8 : 4;
-  const m = 12;
+  g.lineWidth = isGold ? 8 * k : 4 * k;
+  const m = 12 * k;
   g.strokeRect(m, m, s - m * 2, s - m * 2);
 
   const ink = isGold ? '#6b4a08' : dark ? 'rgba(244,236,217,0.92)' : 'rgba(58,80,86,0.88)';
   if (isGold) {
     // landmark tiles keep a centered, ceremonial treatment
     g.fillStyle = ink;
-    g.font = `700 ${n >= 100 ? 84 : 104}px Georgia, serif`;
+    g.font = `700 ${(n >= 100 ? 84 : 104) * k}px Georgia, serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(String(n), s / 2, s / 2 - 6);
-    g.font = `700 28px Georgia, serif`;
-    g.fillText(special === 'start' ? '★ START' : '★ CROWN', s / 2, s - 46);
+    g.fillText(String(n), s / 2, s / 2 - 6 * k);
+    g.font = `700 ${28 * k}px Georgia, serif`;
+    g.fillText(special === 'start' ? '★ START' : '★ CROWN', s / 2, s - 46 * k);
   } else {
     // corner numbers stay readable under tokens, snakes & ladders
     g.fillStyle = ink;
-    g.font = '700 58px Georgia, serif';
+    g.font = `700 ${58 * k}px Georgia, serif`;
     g.textAlign = 'left';
     g.textBaseline = 'top';
-    g.fillText(String(n), 24, 18);
+    g.fillText(String(n), 24 * k, 18 * k);
     if (special === 'snake' || special === 'ladder') {
-      g.font = '30px serif';
+      g.font = `${30 * k}px serif`;
       g.textAlign = 'right';
       g.fillStyle = special === 'snake' ? (dark ? '#f2a3b1' : '#b02342') : dark ? '#f4d98c' : '#8a6410';
-      g.fillText(special === 'snake' ? '◉' : '≣', s - 24, 24);
+      g.fillText(special === 'snake' ? '◉' : '≣', s - 24 * k, 24 * k);
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -91,7 +97,7 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     baseGeos.push(base);
 
     const topMat = new THREE.MeshStandardMaterial({
-      map: numberTexture(n, dark, special),
+      map: numberTexture(n, dark, special, Q.tier === 'low' ? 160 : 256),
       roughness: special ? 0.3 : 0.55,
       metalness: special ? 0.45 : 0.08,
       emissive: special === 'finish' ? 0x664411 : 0x000000,
@@ -106,6 +112,7 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     top.position.set(x, TOP_Y + 0.0015, z);
     top.receiveShadow = true;
     top.userData.square = n;
+    freeze(top);
     group.add(top);
     tileMeshes.set(n, top);
   }
@@ -115,6 +122,7 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
   );
   baseGeos.forEach((g) => g.dispose());
   baseMesh.receiveShadow = true;
+  freeze(baseMesh);
   group.add(baseMesh);
 
   // — Gold frame (merged bars + merged gems: 8 draws → 2) —
@@ -133,6 +141,7 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
   const frame = new THREE.Mesh(mergeCompat(barGeos), frameMat);
   frame.castShadow = true;
   frame.receiveShadow = true;
+  freeze(frame);
   group.add(frame);
   // corner gems
   const gemMat = new THREE.MeshStandardMaterial({ color: 0x53e9ff, emissive: 0x1e90ff, emissiveIntensity: 1.6, roughness: 0.2 });
@@ -142,7 +151,9 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     gem.translate(x, 0.42, z);
     gemGeos.push(gem);
   });
-  group.add(new THREE.Mesh(mergeCompat(gemGeos), gemMat));
+  const gems = new THREE.Mesh(mergeCompat(gemGeos), gemMat);
+  freeze(gems);
+  group.add(gems);
 
   // — Endpoint rings, merged per hue (19 draws → 2) —
   const ringProto = new THREE.TorusGeometry(0.27, 0.035, 8, 36);
@@ -165,8 +176,12 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     snakeRingGeos.push(r);
   });
   ringProto.dispose();
-  group.add(new THREE.Mesh(mergeCompat(ladderRingGeos), ladderRingMat));
-  group.add(new THREE.Mesh(mergeCompat(snakeRingGeos), snakeRingMat));
+  const ladderRings = new THREE.Mesh(mergeCompat(ladderRingGeos), ladderRingMat);
+  const snakeRings = new THREE.Mesh(mergeCompat(snakeRingGeos), snakeRingMat);
+  freeze(ladderRings);
+  freeze(snakeRings);
+  group.add(ladderRings);
+  group.add(snakeRings);
 
   // — Finish beacon —
   const fin = cellCenter(100);

@@ -1,6 +1,6 @@
 // ── Championship player tokens: distinct silhouettes, jewel materials ───────
 import * as THREE from 'three';
-import { mergeCompat } from './merge';
+import { mergeCompat, freeze } from './merge';
 import { Q } from './quality';
 import type { PlayerDef } from './constants';
 import { TOP_Y, cellCenter, stackOffset } from './constants';
@@ -71,6 +71,7 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     );
     body.castShadow = true;
     body.position.y = 0.06;
+    freeze(body);
     g.add(body);
 
     // gold trim merged: collar + topper, one draw per champion
@@ -82,6 +83,7 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     const topGeo = topMesh.geometry.clone().applyMatrix4(topMesh.matrix);
     const goldMesh = new THREE.Mesh(mergeCompat([collarGeo, topGeo]), gold);
     goldMesh.castShadow = true;
+    freeze(goldMesh);
     g.add(goldMesh);
 
     // base disc
@@ -91,6 +93,7 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     );
     base.position.y = 0.04;
     base.castShadow = true;
+    freeze(base);
     g.add(base);
     const rim = new THREE.Mesh(
       new THREE.TorusGeometry(0.35, 0.03, 8, 40),
@@ -98,6 +101,7 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     );
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 0.08;
+    freeze(rim);
     g.add(rim);
     g.userData.rim = rim;
 
@@ -108,6 +112,7 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     }));
     halo.scale.set(1.4, 1.4, 1);
     halo.position.y = 0.12;
+    freeze(halo);
     g.add(halo);
     halos.set(def.id, halo);
 
