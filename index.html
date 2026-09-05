@@ -115,6 +115,15 @@
     </script>
   </head>
   <body>
+    <noscript>
+      <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b1035;color:#f4ecd9;font-family:system-ui,sans-serif;text-align:center;padding:24px;z-index:200;">
+        <div>
+          <div style="font-size:48px;">🐍</div>
+          <h1 style="font-family:Georgia,serif;">Serpent Isles</h1>
+          <p>This voyage needs JavaScript to conjure its 3D isles — please enable it and reload.</p>
+        </div>
+      </div>
+    </noscript>
     <canvas id="scene" aria-label="3D Snakes and Ladders island arena"></canvas>
     <div id="vignette" aria-hidden="true"></div>
     <div id="grain" aria-hidden="true"></div>
@@ -292,7 +301,7 @@
           <li><strong>Hover any tile</strong> to spotlight its serpent or ladder — the rest falls quiet. The <strong>🐍 button</strong> up top fades (👻) or hides (🚫) all routes for a clean board.</li>
           <li><strong>📺 Auto director</strong> (default) holds a top view, cuts to the dice, tracks every hop, slide and climb — then settles home. Grab the camera anytime with drag/scroll; it hands control straight back and resumes when you're idle.</li>
           <li>🎨 Graphics <strong>auto-adapts</strong> to your device (Eco → Cinematic). Force a tier from the pause menu — your voyage is saved across the reload.</li>
-          <li>Shortcuts: <kbd>Space</kbd> roll · <kbd>C</kbd> camera · <kbd>M</kbd> mute · <kbd>H</kbd> help · <kbd>Esc</kbd> pause.</li>
+          <li>Shortcuts: <kbd>Space</kbd> roll · <kbd>C</kbd> camera · <kbd>M</kbd> sound (all · music-off · mute) · <kbd>H</kbd> help · <kbd>Esc</kbd> pause.</li>
         </ol>
         <button id="btn-close-help" class="cta">Got it — back to the isles</button>
       </div>

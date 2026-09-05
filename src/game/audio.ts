@@ -5,13 +5,16 @@ type Osc = OscillatorType;
 export class SoundBank {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private musicBus: GainNode | null = null;
   private ambientNodes: AudioNode[] = [];
   private unlocked = false;
   muted = false;
+  musicMuted = false;
 
   constructor() {
     try {
       this.muted = localStorage.getItem('serpent-muted') === '1';
+      this.musicMuted = localStorage.getItem('serpent-music') === '0';
     } catch {
       /* private mode — sound on */
     }
@@ -24,6 +27,10 @@ export class SoundBank {
         this.ctx = new AC();
         this.master = this.ctx.createGain();
         this.master.gain.value = this.muted ? 0 : 0.55;
+        // music rides its own bus — players can hush the band, keep the dice
+        this.musicBus = this.ctx.createGain();
+        this.musicBus.gain.value = this.musicMuted ? 0 : 1;
+        this.musicBus.connect(this.master);
         // glue: a gentle bus compressor so stacked fanfares never clip phone speakers
         const comp = this.ctx.createDynamicsCompressor();
         comp.threshold.value = -18;
@@ -58,15 +65,28 @@ export class SoundBank {
     }
   }
 
+  setMusicMuted(m: boolean) {
+    this.musicMuted = m;
+    try {
+      localStorage.setItem('serpent-music', m ? '0' : '1');
+    } catch {
+      /* ignore */
+    }
+    if (this.musicBus && this.ctx) {
+      this.musicBus.gain.setTargetAtTime(m ? 0 : 1, this.ctx.currentTime, 0.1);
+    }
+  }
+
   hover() {
     if (!this.unlocked) return; // never conjure a context pre-gesture
     this.tone(880, 0.04, 'sine', 0.06);
   }
 
-  private tone(freq: number, dur: number, type: Osc = 'sine', vol = 0.25, when = 0, slideTo?: number) {
-    if (this.muted) return;
+  private tone(freq: number, dur: number, type: Osc = 'sine', vol = 0.25, when = 0, slideTo?: number, music = false) {
+    if (this.muted || (music && this.musicMuted)) return;
     const ctx = this.ensure();
     if (!ctx || !this.master) return;
+    const bus = music && this.musicBus ? this.musicBus : this.master;
     const t0 = ctx.currentTime + when;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -76,7 +96,7 @@ export class SoundBank {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(vol, t0 + 0.015);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(this.master);
+    o.connect(g).connect(bus);
     o.start(t0);
     o.stop(t0 + dur + 0.05);
   }
@@ -261,15 +281,15 @@ export class SoundBank {
         // sparse melody — rest every third beat
         if (step % 3 !== 2) {
           const f = scale[Math.floor(Math.random() * scale.length)];
-          this.tone(f, 1.6, 'sine', 0.045);
-          this.tone(f * 2, 1.1, 'triangle', 0.018, 0.02);
-          if (Math.random() < 0.3) this.tone(f * 1.5, 1.4, 'sine', 0.03, 0.35);
+          this.tone(f, 1.6, 'sine', 0.045, 0, undefined, true);
+          this.tone(f * 2, 1.1, 'triangle', 0.018, 0.02, undefined, true);
+          if (Math.random() < 0.3) this.tone(f * 1.5, 1.4, 'sine', 0.03, 0.35, undefined, true);
         }
         // root shift every 8 beats
         if (step % 8 === 0) {
           const root = roots[(step / 8) % roots.length | 0];
-          this.tone(root, 3.2, 'sine', 0.05);
-          this.tone(root * 1.5, 3.0, 'sine', 0.028, 0.1);
+          this.tone(root, 3.2, 'sine', 0.05, 0, undefined, true);
+          this.tone(root * 1.5, 3.0, 'sine', 0.028, 0.1, undefined, true);
         }
         step++;
       }

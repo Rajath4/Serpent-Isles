@@ -44,6 +44,7 @@ let matchStart = Date.now();
 let lastTurnName = '';
 let lastTurnWasCpu = false;
 let matchLive = false;
+let scoutShown = false;
 let diceHistory: number[] = [];
 let cpuTimer: number | null = null;
 let lastWin: { name: string; turns: number } | null = null;
@@ -288,6 +289,13 @@ const game = new Game(canvas, sound, {
     if (remaining > 0 && remaining <= 6) {
       // the crown is close enough to hear — lands after the banner, never a klaxon
       window.setTimeout(() => sound.heartbeat(), 450);
+    }
+    if (!scoutShown && game.turnCount >= 2 && !p.isCPU) {
+      // one-time discovery nudge, dismissed by the next roll like every hint
+      scoutShown = true;
+      const h = $('hint');
+      h.innerHTML = '💡 Hover any tile to scout serpents &amp; ladders';
+      h.classList.remove('hidden');
     }
     scheduleCpuRoll(p);
   },
@@ -562,6 +570,8 @@ function resetMatchChrome() {
   lastTurnName = '';
   lastTurnWasCpu = false;
   matchLive = false;
+  scoutShown = false;
+  $('hint').innerHTML = '👆 Tap <strong>ROLL DICE</strong> to set sail!';
   $('clock').textContent = '00:00';
   $('round').textContent = 'Round 1';
   $('hint').classList.remove('hidden');
@@ -868,6 +878,38 @@ document.querySelectorAll('.seg button').forEach((b) => {
 });
 
 // ── top buttons ────────────────────────────────────────────────────────────
+// sound cycles full → band hushed → silent (persisted; restored at boot)
+type SoundMode = 'all' | 'nomusic' | 'muted';
+function soundMode(): SoundMode {
+  if (sound.muted) return 'muted';
+  return sound.musicMuted ? 'nomusic' : 'all';
+}
+function paintSoundButton() {
+  const m = soundMode();
+  const btn = $('btn-sound') as HTMLButtonElement;
+  btn.textContent = m === 'all' ? '🔊' : m === 'nomusic' ? '🎵' : '🔇';
+  btn.classList.toggle('on', m === 'all');
+  btn.title =
+    m === 'all'
+      ? 'Sound on — tap to hush the music box'
+      : m === 'nomusic'
+        ? 'Music off, dice live — tap to mute all'
+        : 'Muted — tap for full sound';
+}
+$('btn-sound').addEventListener('click', () => {
+  const m = soundMode();
+  if (m === 'all') {
+    sound.setMusicMuted(true);
+    toast('🎵 Music box hushed — dice stay loud.');
+  } else if (m === 'nomusic') {
+    sound.setMuted(true);
+  } else {
+    sound.setMuted(false);
+    sound.click(); // confirm the way back on — silence confirms the other
+  }
+  paintSoundButton();
+});
+paintSoundButton();
 function syncGfxSeg() {
   const cur = loadChoice();
   document.querySelectorAll('#gfx-seg button').forEach((x) =>
@@ -920,20 +962,6 @@ $('btn-routes').addEventListener('click', () => {
         : '🚫 Routes hidden — pure board focus',
   );
 });
-$('btn-sound').addEventListener('click', (e) => {
-  const btn = e.currentTarget as HTMLButtonElement;
-  const muted = !sound.muted;
-  sound.setMuted(muted);
-  btn.textContent = muted ? '🔇' : '🔊';
-  btn.classList.toggle('on', !muted);
-  if (!muted) sound.click(); // confirm the way back on — silence confirms the other
-});
-// restore persisted mute state (SoundBank read it at construction)
-{
-  const btn = $('btn-sound') as HTMLButtonElement;
-  btn.textContent = sound.muted ? '🔇' : '🔊';
-  btn.classList.toggle('on', !sound.muted);
-}
 $('btn-help').addEventListener('click', () => {
   sound.click();
   $('help').classList.remove('hidden');
@@ -1001,6 +1029,16 @@ requestAnimationFrame(() =>
 // local legends + unfinished business
 renderHof();
 refreshResume();
+
+// GPU context first-aid: mobile browsers reclaim GL under memory pressure.
+// three.js heals itself on restore — we just narrate the blink, never hijack.
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault(); // allow the restore path
+  toast('🌊 The lagoon blinked — waters steadying…', 3000);
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  toast('✨ Waters calm again.');
+});
 
 // PWA: installable offline shell in production builds only
 try {
