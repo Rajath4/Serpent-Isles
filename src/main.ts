@@ -255,8 +255,8 @@ const game = new Game(canvas, sound, {
       return;
     }
     let fate = '';
-    if (sq === 100) fate = ` <span class="fate-crown">👑 The Crown!</span>`;
-    else if (sq === 1) fate = ` <span class="fate-ladder">★ Start · 🪜 to 38</span>`;
+    if (sq === 100) fate = ` <span class="fate-crown">👑 The Crown — exact roll only!</span>`;
+    else if (sq === 1) fate = ` <span class="fate-ladder">★ Start</span>`;
     else if (LADDERS[sq] !== undefined) fate = ` <span class="fate-ladder">🪜 climbs to ${LADDERS[sq]}</span>`;
     else if (SNAKES[sq] !== undefined) fate = ` <span class="fate-snake">🐍 slides to ${SNAKES[sq]}</span>`;
     chip.innerHTML = `■ ${sq}${fate}`;

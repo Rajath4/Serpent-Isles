@@ -6,30 +6,36 @@ export const BOARD_SIZE = BOARD_N * CELL;
 export const TILE_H = 0.22;
 export const TOP_Y = TILE_H; // top surface of tiles
 
-/** Classic, play-tested layout — snakes & ladders never share a square. */
+/**
+ * Tournament digital-edition layout (cf. major hosted online versions):
+ * 9 ladders / 10 snakes, spread across every board region. Deliberately
+ * NOTHING touches square 100 — the highest climb ends at 91 and a 99→80
+ * serpent guards the crown, so the finish must be earned by exact roll.
+ * All endpoints unique: no square hosts two routes.
+ */
 export const SNAKES: Record<number, number> = {
   16: 6,
-  47: 26,
+  46: 25,
   49: 11,
-  56: 53,
   62: 19,
   64: 60,
-  87: 24,
-  93: 73,
+  74: 53,
+  89: 68,
+  92: 88,
   95: 75,
-  98: 78,
+  99: 80,
 };
 
 export const LADDERS: Record<number, number> = {
-  1: 38,
-  4: 14,
-  9: 31,
+  2: 38,
+  7: 14,
+  8: 31,
+  15: 26,
   21: 42,
   28: 84,
   36: 44,
   51: 67,
   71: 91,
-  80: 100,
 };
 
 export interface PlayerDef {
