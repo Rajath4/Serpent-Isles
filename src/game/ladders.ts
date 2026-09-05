@@ -1,5 +1,6 @@
-// ── Low-arched golden ladders with per-route spotlight support ───────────────
+// ── Low-arched golden ladders: 2 draws each, per-route spotlight support ────
 import * as THREE from 'three';
+import { mergeCompat } from './merge';
 import { LADDERS, TOP_Y, cellCenter } from './constants';
 import type { RouteMode } from './snakes';
 
@@ -17,6 +18,8 @@ interface Entry {
   railMat: THREE.MeshStandardMaterial;
   rungMat: THREE.MeshStandardMaterial;
 }
+
+const V1 = new THREE.Vector3(1, 1, 1);
 
 export function buildLadders(scene: THREE.Scene): LadderHandles {
   const group = new THREE.Group();
@@ -66,19 +69,19 @@ export function buildLadders(scene: THREE.Scene): LadderHandles {
     const dir = new THREE.Vector3().subVectors(p2, p0).setY(0).normalize();
     const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(0.24);
 
+    const railGeos: THREE.BufferGeometry[] = [];
+    const rungGeos: THREE.BufferGeometry[] = [];
     [side.clone(), side.clone().negate()].forEach((off) => {
       const rc = new THREE.QuadraticBezierCurve3(
         p0.clone().add(off),
         apex.clone().add(off),
         p2.clone().add(off),
       );
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(rc, 20, 0.055, 8, false), railMat);
-      tube.castShadow = true;
-      group.add(tube);
+      railGeos.push(new THREE.TubeGeometry(rc, 16, 0.055, 8, false));
       [p0.clone().add(off), p2.clone().add(off)].forEach((p) => {
-        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), rungMat);
-        knob.position.copy(p).add(new THREE.Vector3(0, 0.08, 0));
-        group.add(knob);
+        const knob = new THREE.SphereGeometry(0.09, 10, 8);
+        knob.translate(p.x, p.y + 0.08, p.z);
+        rungGeos.push(knob);
       });
     });
 
@@ -86,13 +89,21 @@ export function buildLadders(scene: THREE.Scene): LadderHandles {
     for (let i = 1; i <= rungs; i++) {
       const tt = i / (rungs + 1);
       const c = curve.getPoint(tt);
-      const rungDir = side.clone().normalize();
-      const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.48, 8), rungMat);
-      rung.position.copy(c);
-      rung.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rungDir);
-      rung.castShadow = true;
-      group.add(rung);
+      const rung = new THREE.CylinderGeometry(0.042, 0.042, 0.48, 8);
+      rung.applyMatrix4(
+        new THREE.Matrix4().compose(
+          c,
+          new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), side.clone().normalize()),
+          V1,
+        ),
+      );
+      rungGeos.push(rung);
     }
+    const rails = new THREE.Mesh(mergeCompat(railGeos), railMat);
+    rails.castShadow = true;
+    group.add(rails);
+    // rungs ride along — their shadows were sub-pixel, so they only receive presence
+    group.add(new THREE.Mesh(mergeCompat(rungGeos), rungMat));
   });
 
   scene.add(group);

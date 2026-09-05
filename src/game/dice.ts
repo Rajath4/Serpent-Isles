@@ -237,6 +237,7 @@ export function buildDice(
         flash.scale.set(s, s, 1);
         (flash.material as THREE.SpriteMaterial).opacity = 0.85 * (1 - flashT);
       }
+      flash.visible = flashT < 1;
       if (!anim) {
         if (nudgeT !== null) {
           nudgeT += dt;

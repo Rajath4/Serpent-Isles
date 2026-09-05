@@ -71,7 +71,9 @@ export class Game {
   private env: {
     update: (t: number, dt: number) => void;
     fadeOccluders: (camPos: THREE.Vector3, lookAt: THREE.Vector3) => void;
+    sun: THREE.DirectionalLight;
   };
+  private sun!: THREE.DirectionalLight;
   private fx: Effects;
   private marker: THREE.Group;
   private markerGlow: THREE.Sprite;
@@ -143,6 +145,7 @@ export class Game {
     this.controls.autoRotateSpeed = 0.5;
 
     this.env = buildEnvironment(this.scene);
+    this.sun = this.env.sun;
     this.board = buildBoard(this.scene);
     this.snakes = buildSnakes(this.scene);
     this.ladders = buildLadders(this.scene);
@@ -342,6 +345,15 @@ export class Game {
     this.renderer.setPixelRatio(
       this.perfTier === 0 ? Math.min(dpr, 2) : this.perfTier === 1 ? Math.min(dpr, 1.5) : 1,
     );
+    // swift tier also halves the shadow map — quarter the shadow texels
+    const shadowSize = this.perfTier === 2 ? 1024 : 2048;
+    if (this.sun.shadow.mapSize.x !== shadowSize) {
+      this.sun.shadow.mapSize.set(shadowSize, shadowSize);
+      if (this.sun.shadow.map) {
+        this.sun.shadow.map.dispose();
+        this.sun.shadow.map = null;
+      }
+    }
   }
 
   // ── setup ────────────────────────────────────────────────────────────────

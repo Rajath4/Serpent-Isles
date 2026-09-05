@@ -1,5 +1,6 @@
 // ── Championship player tokens: distinct silhouettes, jewel materials ───────
 import * as THREE from 'three';
+import { mergeCompat } from './merge';
 import type { PlayerDef } from './constants';
 import { TOP_Y, cellCenter, stackOffset } from './constants';
 import { makeGlowTexture } from './environment';
@@ -68,11 +69,16 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
     body.position.y = 0.06;
     g.add(body);
 
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.045, 10, 28), gold);
-    collar.rotation.x = Math.PI / 2;
-    collar.position.y = 0.5;
-    g.add(collar);
-    g.add(topper(def.id, gold));
+    // gold trim merged: collar + topper, one draw per champion
+    const collarGeo = new THREE.TorusGeometry(0.2, 0.045, 10, 28);
+    collarGeo.rotateX(Math.PI / 2);
+    collarGeo.translate(0, 0.5, 0);
+    const topMesh = topper(def.id, gold);
+    topMesh.updateMatrix();
+    const topGeo = topMesh.geometry.clone().applyMatrix4(topMesh.matrix);
+    const goldMesh = new THREE.Mesh(mergeCompat([collarGeo, topGeo]), gold);
+    goldMesh.castShadow = true;
+    g.add(goldMesh);
 
     // base disc
     const base = new THREE.Mesh(
@@ -132,6 +138,7 @@ export function buildTokens(scene: THREE.Scene, defs: PlayerDef[]): TokenHandles
         const isActive = id === activeId;
         const halo = halos.get(id)!;
         halo.material.opacity += (((isActive ? 0.55 + Math.sin(t * 4) * 0.15 : 0)) - halo.material.opacity) * 0.12;
+        halo.visible = halo.material.opacity > 0.02; // dead sprites skip the draw call
         const rim = o.userData.rim as THREE.Mesh;
         const rm = rim.material as THREE.MeshStandardMaterial;
         rm.emissiveIntensity = isActive ? 2.2 + Math.sin(t * 4) * 0.8 : 1.2;

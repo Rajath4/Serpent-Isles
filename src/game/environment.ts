@@ -1,10 +1,14 @@
 // ── Cinematic island environment: sky, sea, platform, flora, particles ──────
+// Perf: 13-scene-light rig cut to 6 (every forward light taxes ALL shaders);
+// static decor merged wherever per-object fading isn't needed.
 import * as THREE from 'three';
+import { mergeCompat } from './merge';
 
 export interface EnvHandles {
   update: (t: number, dt: number) => void;
   /** Ghost any foliage standing between the lens and the action. Never a blocked view. */
   fadeOccluders: (camPos: THREE.Vector3, lookAt: THREE.Vector3) => void;
+  sun: THREE.DirectionalLight;
 }
 
 function skyTexture(): THREE.CanvasTexture {
@@ -36,8 +40,8 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
 
   scene.fog = new THREE.Fog(0x2a2358, 55, 165);
 
-  // — Lights —
-  const hemi = new THREE.HemisphereLight(0x9db8ff, 0x3a2350, 0.85);
+  // — Lights: hemi + sun + rim + dice spot + 2 front braziers. Nothing more. —
+  const hemi = new THREE.HemisphereLight(0x9db8ff, 0x3a2350, 0.95);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(0xffe3b3, 2.1);
@@ -55,10 +59,6 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   const rim = new THREE.DirectionalLight(0x6f7bff, 0.9);
   rim.position.set(-16, 10, -18);
   scene.add(rim);
-
-  const warm = new THREE.PointLight(0xff9a5c, 60, 60, 1.8);
-  warm.position.set(0, 6, 14);
-  scene.add(warm);
 
   // — Sea —
   const seaGeo = new THREE.CircleGeometry(200, 64);
@@ -145,15 +145,18 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     const h = 1.6 + (i % 3) * 0.5;
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, h, 8), trunkM);
     trunk.position.y = h / 2;
-    trunk.castShadow = true;
     t.add(trunk);
     const lm = leafM;
+    // canopy merged: 3 cones → 1 draw per tree (trunk shadow was invisible anyway)
+    const canopyGeos: THREE.BufferGeometry[] = [];
     for (let k = 0; k < 3; k++) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(1.05 - k * 0.24, 1.0, 9), lm);
-      cone.position.y = h + 0.35 + k * 0.62;
-      cone.castShadow = true;
-      t.add(cone);
+      const cone = new THREE.ConeGeometry(1.05 - k * 0.24, 1.0, 9);
+      cone.translate(0, h + 0.35 + k * 0.62, 0);
+      canopyGeos.push(cone);
     }
+    const canopy = new THREE.Mesh(mergeCompat(canopyGeos), lm);
+    canopy.castShadow = true;
+    t.add(canopy);
     t.position.set(x, 0, z);
     t.rotation.y = i * 1.3;
     t.traverse((o) => {
@@ -182,62 +185,67 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
     for (const oc of occluders) oc.tgt = blocked.has(oc.root) ? 0.1 : 1;
   }
 
-  // — Glowing crystals —
+  // — Glowing crystals: merged per hue (16 draws → 2). Emissive carries them. —
   const crystalMat = new THREE.MeshStandardMaterial({
     color: 0x7df9ff, emissive: 0x1e90ff, emissiveIntensity: 1.4, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.95,
   });
   const crystalMat2 = new THREE.MeshStandardMaterial({
     color: 0xff9df2, emissive: 0xb01aff, emissiveIntensity: 1.2, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.95,
   });
-  const crystals: THREE.Mesh[] = [];
+  const crystalGeosA: THREE.BufferGeometry[] = [];
+  const crystalGeosB: THREE.BufferGeometry[] = [];
   const crystalSpots: Array<[number, number, number, number]> = [
     [-13.6, 0, 1.5, 1], [13.6, 0, -1.5, 0], [1.8, 0, 13.8, 1], [-2.0, 0, -13.8, 0],
   ];
+  const ONE = new THREE.Vector3(1, 1, 1);
   crystalSpots.forEach(([x, _y, z, v], i) => {
-    const grp = new THREE.Group();
+    const yaw = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, i * 2.1, 0));
     for (let k = 0; k < 4; k++) {
-      const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.32 + (k % 2) * 0.2), v ? crystalMat : crystalMat2);
-      m.position.set((k - 1.5) * 0.35, 0.35 + (k % 3) * 0.3, ((k * 7) % 3 - 1) * 0.3);
-      m.rotation.set(0.3 * k, k * 0.9, 0.2 * k);
-      m.castShadow = true;
-      grp.add(m);
-      crystals.push(m);
+      const m = new THREE.OctahedronGeometry(0.32 + (k % 2) * 0.2);
+      const q = yaw.clone().multiply(
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3 * k, k * 0.9, 0.2 * k)),
+      );
+      const p = new THREE.Vector3((k - 1.5) * 0.35, 0.35 + (k % 3) * 0.3, ((k * 7) % 3 - 1) * 0.3)
+        .applyQuaternion(yaw)
+        .add(new THREE.Vector3(x, 0, z));
+      m.applyMatrix4(new THREE.Matrix4().compose(p, q, ONE));
+      (v ? crystalGeosA : crystalGeosB).push(m);
     }
-    grp.position.set(x, 0, z);
-    grp.rotation.y = i * 2.1;
-    scene.add(grp);
-    const l = new THREE.PointLight(v ? 0x44ccff : 0xcc66ff, 8, 9, 1.8);
-    l.position.set(x, 1.4, z);
-    scene.add(l);
   });
+  for (const [geos, mat] of [[crystalGeosA, crystalMat], [crystalGeosB, crystalMat2]] as const) {
+    const merged = new THREE.Mesh(mergeCompat(geos), mat);
+    scene.add(merged);
+  }
 
-  // — Torches (braziers) at board corners —
+  // — Torches (braziers) at board corners: merged ironwork, light only up front —
   const flameTargets: THREE.Sprite[] = [];
   const flameTex = makeGlowTexture();
   const corners: Array<[number, number]> = [[-7.4, 7.4], [7.4, 7.4], [-7.4, -7.4], [7.4, -7.4]];
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.8 });
+  const bowlMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.8, roughness: 0.35 });
+  const poleGeos: THREE.BufferGeometry[] = [];
+  const bowlGeos: THREE.BufferGeometry[] = [];
   corners.forEach(([x, z]) => {
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.09, 0.13, 1.5, 8),
-      new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.8 }),
-    );
-    pole.position.set(x, 0.75, z);
-    pole.castShadow = true;
-    scene.add(pole);
-    const bowl = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.34, 0.18, 0.28, 12),
-      new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.8, roughness: 0.35 }),
-    );
-    bowl.position.set(x, 1.6, z);
-    scene.add(bowl);
+    const pole = new THREE.CylinderGeometry(0.09, 0.13, 1.5, 8);
+    pole.translate(x, 0.75, z);
+    poleGeos.push(pole);
+    const bowl = new THREE.CylinderGeometry(0.34, 0.18, 0.28, 12);
+    bowl.translate(x, 1.6, z);
+    bowlGeos.push(bowl);
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameTex, color: 0xffb14e, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     spr.position.set(x, 2.05, z);
-    spr.scale.set(0.9, 1.2, 1);
+    spr.scale.set(1.05, 1.4, 1);
     scene.add(spr);
     flameTargets.push(spr);
-    const l = new THREE.PointLight(0xff9a3c, 14, 10, 1.9);
-    l.position.set(x, 2.1, z);
-    scene.add(l);
+    if (z > 0) {
+      // front braziers only — the back pair's pools were never on camera
+      const l = new THREE.PointLight(0xff9a3c, 14, 10, 1.9);
+      l.position.set(x, 2.1, z);
+      scene.add(l);
+    }
   });
+  scene.add(new THREE.Mesh(mergeCompat(poleGeos), poleMat));
+  scene.add(new THREE.Mesh(mergeCompat(bowlGeos), bowlMat));
 
   // — Fireflies —
   const fireflyCount = 130;
@@ -304,12 +312,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
       // flames flicker
       flameTargets.forEach((f, i) => {
         const s = 1 + Math.sin(t * 11 + i * 2.4) * 0.12 + Math.sin(t * 23 + i) * 0.06;
-        f.scale.set(0.9 * s, 1.2 * (2 - s) * s * 0.5 + 0.6, 1);
-      });
-      // crystals bob
-      crystals.forEach((c, i) => {
-        c.position.y += Math.sin(t * 1.4 + i * 1.7) * dt * 0.12;
-        c.rotation.y += dt * 0.6;
+        f.scale.set(1.05 * s, 1.4 * (2 - s) * s * 0.5 + 0.7, 1);
       });
       // fireflies drift
       const p = fGeo.attributes.position as THREE.BufferAttribute;
@@ -337,6 +340,7 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
       }
     },
     fadeOccluders,
+    sun,
   };
 }
 

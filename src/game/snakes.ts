@@ -1,6 +1,8 @@
-// ── Gallery-grade serpents: PBR skin, real scale relief, spines, hoods, fangs ─
-// Bodies stay low (board readability); craft lives in material + sculpture.
+// ── Gallery-grade serpents, fused for speed: bodies stay sculpted, but each ─
+// head is merged by material (~22 draws → ~12 per snake) and micro-parts skip
+// the shadow pass. Identical look, identical behavior, far fewer draw calls.
 import * as THREE from 'three';
+import { mergeCompat } from './merge';
 import { SNAKES, TOP_Y, cellCenter } from './constants';
 import { makeGlowTexture } from './environment';
 
@@ -73,7 +75,6 @@ function skinMaps(style: SkinStyle) {
       }
     }
   }
-  // satin sheen variation so clearcoat has something to play with
   const sheen = g.createLinearGradient(0, 0, 0, H);
   sheen.addColorStop(0, 'rgba(255,255,255,0.20)');
   sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
@@ -113,14 +114,13 @@ interface Entry {
   fadeMats: THREE.MeshStandardMaterial[];
   eyeMats: THREE.MeshStandardMaterial[];
   spikes: THREE.InstancedMesh;
+  glow: THREE.Sprite;
   glowMat: THREE.SpriteMaterial;
   headGroup: THREE.Group;
-  tongueG: THREE.Group;
-  tongueTips: THREE.Mesh[];
+  tongue: THREE.Mesh;
   tongueBaseZ: number;
   tongueTravel: number;
   tongueExt: number;
-  r: number;
   phase: number;
 }
 
@@ -145,6 +145,29 @@ function paintGradient(geo: THREE.TubeGeometry, hex: string, tubular: number, ra
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
+const _e = new THREE.Euler();
+const _q = new THREE.Quaternion();
+const _v = new THREE.Vector3();
+const _s = new THREE.Vector3();
+/** Bake a part transform into its geometry so parts can merge. */
+function bake(
+  bucket: THREE.BufferGeometry[],
+  geo: THREE.BufferGeometry,
+  px: number, py: number, pz: number,
+  rx = 0, ry = 0, rz = 0,
+  sx = 1, sy?: number, sz?: number,
+  parent?: THREE.Matrix4,
+) {
+  _e.set(rx, ry, rz);
+  _q.setFromEuler(_e);
+  _v.set(px, py, pz);
+  _s.set(sx, sy ?? sx, sz ?? sx);
+  const m = new THREE.Matrix4().compose(_v, _q, _s);
+  if (parent) m.premultiply(parent);
+  geo.applyMatrix4(m);
+  bucket.push(geo);
+}
+
 export function buildSnakes(scene: THREE.Scene): SnakeHandles {
   const group = new THREE.Group();
   const curves = new Map<number, THREE.CatmullRomCurve3>();
@@ -164,6 +187,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       const target = dimAll ? 0.14 : spot === null ? base : focused ? 1 : 0.13;
       for (const m of e.fadeMats) m.opacity = m.userData.baseOpacity * target;
       e.glowMat.opacity = focused ? 0.9 : target * 0.5;
+      e.glow.visible = e.glowMat.opacity > 0.02;
       const show = target > 0.2 || focused;
       e.headGroup.visible = show;
       e.spikes.visible = show;
@@ -206,18 +230,18 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     const style: SkinStyle = i % 2 === 0 ? 'diamond' : 'banded';
     const skin = skinMaps(style);
     const radius = 0.08 + Math.min(0.022, len * 0.0035);
+    const R = radius;
 
     const entry: Entry = {
       head, fadeMats: [], eyeMats: [], spikes: null as unknown as THREE.InstancedMesh,
-      glowMat: null as unknown as THREE.SpriteMaterial,
-      headGroup: new THREE.Group(), tongueG: null as unknown as THREE.Group,
-      tongueTips: [], tongueBaseZ: 0, tongueTravel: 1.1 * radius, tongueExt: 0,
-      r: radius, phase: i * 1.7,
+      glow: null as unknown as THREE.Sprite, glowMat: null as unknown as THREE.SpriteMaterial,
+      headGroup: new THREE.Group(), tongue: null as unknown as THREE.Mesh,
+      tongueBaseZ: 3.55 * R, tongueTravel: 1.1 * R, tongueExt: 0, phase: i * 1.7,
     };
 
     // — body: clearcoat jewel skin with scale relief + head→tail gradient —
-    const TUB = 64;
-    const RAD = 12;
+    const TUB = 56;
+    const RAD = 10;
     const bodyGeo = new THREE.TubeGeometry(curve, TUB, radius, RAD, false);
     paintGradient(bodyGeo, pal.body, TUB, RAD);
     const bodyMat = track(entry, new THREE.MeshPhysicalMaterial({
@@ -240,11 +264,11 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     body.receiveShadow = true;
     group.add(body);
 
-    // — cream underbelly hugging the tile —
+    // — cream underbelly hugging the tile (presence only, no shadow cost) —
     const bellyMat = track(entry, new THREE.MeshPhysicalMaterial({
       color: pal.belly, roughness: 0.5, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.4,
     }));
-    const belly = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, radius * 0.78, 8, false), bellyMat);
+    const belly = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, radius * 0.78, 8, false), bellyMat);
     belly.position.y = -radius * 0.52;
     belly.receiveShadow = true;
     group.add(belly);
@@ -273,142 +297,123 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
       mtx.compose(pos, q, scl);
       spikes.setMatrixAt(k, mtx);
     }
-    spikes.castShadow = true;
     group.add(spikes);
     entry.spikes = spikes;
 
     // — beaded tail tip marching PAST the tube end, capping the hollow —
     const tailMat = track(entry, new THREE.MeshStandardMaterial({ color: pal.pattern, roughness: 0.4, metalness: 0.3 }));
+    const tailGeos: THREE.BufferGeometry[] = [];
     [0.8, 0.62, 0.45, 0.3].forEach((s, k) => {
-      const bead = new THREE.Mesh(new THREE.SphereGeometry(radius * s, 10, 8), tailMat);
-      bead.position.copy(p3).add(new THREE.Vector3(
-        dir.x * (k + 0.4) * radius * 1.15, 0.015, dir.z * (k + 0.4) * radius * 1.15,
-      ));
-      bead.castShadow = true;
-      group.add(bead);
+      const bead = new THREE.SphereGeometry(radius * s, 10, 8);
+      bead.translate(
+        p3.x + dir.x * (k + 0.4) * radius * 1.15, p3.y + 0.015,
+        p3.z + dir.z * (k + 0.4) * radius * 1.15,
+      );
+      tailGeos.push(bead);
     });
+    group.add(new THREE.Mesh(mergeCompat(tailGeos), tailMat));
 
-    // — sculpted head: ONE continuous lathe-turned predator skull —
-    // (neck → cheek bulge → tapered snout → round nose), flattened like a real viper.
+    // — head: ONE continuous lathe-turned predator skull, parts fused by material —
     const hg = entry.headGroup;
     const skullMat = track(entry, new THREE.MeshPhysicalMaterial({
       color: pal.body, roughness: 0.32, metalness: 0.08,
       clearcoat: 1, clearcoatRoughness: 0.22, envMapIntensity: 1.0,
     }));
+    const skullParts: THREE.BufferGeometry[] = [];
     const prof: Array<[number, number]> = [
       [1.06, -0.45], [1.05, -0.15], [1.0, 0.1], [1.12, 0.55], [1.18, 1.0], [1.02, 1.6],
       [0.82, 2.2], [0.58, 2.75], [0.32, 3.15], [0.1, 3.42], [0.02, 3.5],
     ];
     const skullGeo = new THREE.LatheGeometry(
-      prof.map(([x, y]) => new THREE.Vector2(x * radius, y * radius)), 20,
+      prof.map(([x, y]) => new THREE.Vector2(x * R, y * R)), 20,
     );
     skullGeo.rotateX(Math.PI / 2); // long axis → +Z (snout forward)
-    const skull = new THREE.Mesh(skullGeo, skullMat);
-    skull.scale.set(1, 0.7, 1); // dorsoventral flatten — the snake-head wedge
+    bake(skullParts, skullGeo, 0, 0, 0, 0, 0, 0, 1, 0.7, 1);
+    // brow ridges ride the same skull (fused)
+    [-1, 1].forEach((s) => {
+      bake(skullParts, new THREE.SphereGeometry(0.32 * R, 12, 10),
+        s * 0.72 * R, 0.62 * R, 1.55 * R, 0, -s * 0.3, 0, 1.3, 0.45, 0.9);
+    });
+    const skull = new THREE.Mesh(mergeCompat(skullParts), skullMat);
     skull.castShadow = true;
     hg.add(skull);
 
-    // cobra hood on a few individuals only — variety reads natural, not cloned
+    // cobra hood on a few individuals only
     if ([0, 4, 7].includes(i)) {
       const hoodMat = track(entry, new THREE.MeshPhysicalMaterial({
         color: pal.pattern, roughness: 0.42, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.35,
       }));
       const hoodInnerMat = track(entry, new THREE.MeshStandardMaterial({ color: pal.belly, roughness: 0.55 }));
-      const hood = new THREE.Group();
-      const outer = new THREE.Mesh(new THREE.SphereGeometry(radius, 18, 14), hoodMat);
-      outer.scale.set(1.6, 2.0, 0.55);
-      outer.castShadow = true;
-      hood.add(outer);
-      const inner = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), hoodInnerMat);
-      inner.scale.set(1.24, 1.6, 0.45);
-      inner.position.z = 0.16 * radius;
-      hood.add(inner);
-      // spectacle markings on the back of the hood
-      [-1, 1].forEach((s) => {
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.2 * radius, 10, 8), hoodInnerMat);
-        dot.scale.set(1, 1.3, 0.4);
-        dot.position.set(s * 0.55 * radius, 0.55 * radius, -0.52 * radius);
-        hood.add(dot);
-      });
-      hood.position.set(0, 0.1 * radius, -0.85 * radius);
-      hood.rotation.x = -0.3; // flares back off the neck
+      const hoodM = new THREE.Matrix4().compose(
+        new THREE.Vector3(0, 0.1 * R, -0.85 * R),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.3, 0, 0)),
+        new THREE.Vector3(1, 1, 1),
+      );
+      const hoodGeos: THREE.BufferGeometry[] = [];
+      bake(hoodGeos, new THREE.SphereGeometry(R, 18, 14), 0, 0, 0, 0, 0, 0, 1.6, 2.0, 0.55, hoodM);
+      const hood = new THREE.Mesh(mergeCompat(hoodGeos), hoodMat);
+      hood.castShadow = true;
       hg.add(hood);
+      const hoodInGeos: THREE.BufferGeometry[] = [];
+      bake(hoodInGeos, new THREE.SphereGeometry(R, 16, 12), 0, 0, 0.16 * R, 0, 0, 0, 1.24, 1.6, 0.45, hoodM);
+      [-1, 1].forEach((s) => {
+        bake(hoodInGeos, new THREE.SphereGeometry(0.2 * R, 10, 8),
+          s * 0.55 * R, 0.55 * R, -0.52 * R, 0, 0, 0, 1, 1.3, 0.4, hoodM);
+      });
+      hg.add(new THREE.Mesh(mergeCompat(hoodInGeos), hoodInnerMat));
     }
 
-    // nostrils ride high on the snout tip, as on a real snake
-    const nostrilMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x140a08, roughness: 0.6 }));
+    // one fused dark mask: sockets + pupils + nostrils (micro-parts, zero shadow cost)
+    const darkMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x140d0a, roughness: 0.5 }));
+    const darkGeos: THREE.BufferGeometry[] = [];
     [-1, 1].forEach((s) => {
-      const n = new THREE.Mesh(new THREE.SphereGeometry(0.08 * radius, 8, 6), nostrilMat);
-      n.position.set(s * 0.22 * radius, 0.3 * radius, 2.95 * radius);
-      hg.add(n);
+      bake(darkGeos, new THREE.TorusGeometry(0.34 * R, 0.11 * R, 8, 18),
+        s * 1.0 * R, 0.55 * R, 1.32 * R, 0, s * 0.55, 0);
+      bake(darkGeos, new THREE.BoxGeometry(0.08 * R, 0.3 * R, 0.1 * R),
+        s * 1.04 * R, 0.57 * R, 1.6 * R, 0, s * 0.33, 0);
+      bake(darkGeos, new THREE.SphereGeometry(0.08 * R, 8, 6), s * 0.22 * R, 0.3 * R, 2.95 * R);
     });
+    hg.add(new THREE.Mesh(mergeCompat(darkGeos), darkMat));
 
-    // eyes set INTO socket rings under brow ridges — never glued on top
-    const socketMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x1c100c, roughness: 0.55 }));
+    // jeweled amber eyes, fused pair
     const eyeMat = track(entry, new THREE.MeshStandardMaterial({
       color: 0x2a1500, emissive: 0xffae00, emissiveIntensity: 2.2, roughness: 0.15,
     }));
     entry.eyeMats.push(eyeMat);
-    const pupilMat = track(entry, new THREE.MeshStandardMaterial({ color: 0x0a0605, roughness: 0.25 }));
+    const eyeGeos: THREE.BufferGeometry[] = [];
     [-1, 1].forEach((s) => {
-      const socket = new THREE.Mesh(new THREE.TorusGeometry(0.34 * radius, 0.11 * radius, 8, 18), socketMat);
-      socket.position.set(s * 1.0 * radius, 0.55 * radius, 1.32 * radius);
-      socket.rotation.y = s * 0.55;
-      hg.add(socket);
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.3 * radius, 14, 12), eyeMat);
-      e.position.set(s * 0.95 * radius, 0.55 * radius, 1.35 * radius);
-      hg.add(e);
-      const p = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08 * radius, 0.3 * radius, 0.1 * radius), pupilMat,
-      );
-      p.position.set(s * 1.04 * radius, 0.57 * radius, 1.6 * radius);
-      p.rotation.y = s * 0.33;
-      hg.add(p);
-      const brow = new THREE.Mesh(new THREE.SphereGeometry(0.32 * radius, 12, 10), skullMat);
-      brow.scale.set(1.3, 0.45, 0.9);
-      brow.position.set(s * 0.72 * radius, 0.62 * radius, 1.55 * radius);
-      brow.rotation.y = -s * 0.3;
-      hg.add(brow);
+      bake(eyeGeos, new THREE.SphereGeometry(0.3 * R, 14, 12), s * 0.95 * R, 0.55 * R, 1.35 * R);
     });
+    hg.add(new THREE.Mesh(mergeCompat(eyeGeos), eyeMat));
 
-    // fangs tucked under the snout — a hint, not tusks
+    // fangs, fused pair
     const fangMat = track(entry, new THREE.MeshStandardMaterial({ color: 0xfff6e6, roughness: 0.2, metalness: 0.05 }));
+    const fangGeos: THREE.BufferGeometry[] = [];
     [-1, 1].forEach((s) => {
-      const f = new THREE.Mesh(new THREE.ConeGeometry(0.09 * radius, 0.45 * radius, 8), fangMat);
-      f.position.set(s * 0.4 * radius, -0.35 * radius, 2.7 * radius);
-      f.rotation.x = Math.PI - 0.12;
-      hg.add(f);
+      bake(fangGeos, new THREE.ConeGeometry(0.09 * R, 0.45 * R, 8),
+        s * 0.4 * R, -0.35 * R, 2.7 * R, Math.PI - 0.12, 0, 0);
     });
+    hg.add(new THREE.Mesh(mergeCompat(fangGeos), fangMat));
 
-    // slim forked tongue riding its own mount — darts in/out like the real thing
+    // slim forked tongue, fused — the whole mount darts (position + sway carry it)
     const tongueMat = track(entry, new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: 0xaa0022, emissiveIntensity: 0.9 }));
-    const tongueG = new THREE.Group();
-    tongueG.position.set(0, -0.3 * radius, 3.55 * radius);
-    hg.add(tongueG);
-    entry.tongueG = tongueG;
-    entry.tongueBaseZ = 3.55 * radius;
-    const fork = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14 * radius, 0.05 * radius, 0.9 * radius), tongueMat,
-    );
-    fork.position.set(0, 0, 0.15 * radius);
-    tongueG.add(fork);
+    const tongueGeos: THREE.BufferGeometry[] = [];
+    bake(tongueGeos, new THREE.BoxGeometry(0.14 * R, 0.05 * R, 0.9 * R), 0, 0, 0.15 * R);
     [-1, 1].forEach((s) => {
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07 * radius, 0.5 * radius, 6), tongueMat);
-      tip.rotation.x = Math.PI / 2;
-      tip.position.set(s * 0.16 * radius, 0, 0.95 * radius);
-      tip.userData.side = s;
-      tongueG.add(tip);
-      entry.tongueTips.push(tip);
+      bake(tongueGeos, new THREE.ConeGeometry(0.07 * R, 0.5 * R, 6), s * 0.16 * R, 0, 0.95 * R, Math.PI / 2, 0, 0);
     });
+    const tongue = new THREE.Mesh(mergeCompat(tongueGeos), tongueMat);
+    tongue.position.set(0, -0.3 * R, 3.55 * R);
+    hg.add(tongue);
+    entry.tongue = tongue;
 
-    // Stance: prowling forward off the neck — the head base sits AT tube height
-    // so skull collar + throat bulge swallow the tube start: the joint can never gape.
+    // Stance: prowling forward off the neck — collar + throat swallow the tube
+    // start so the joint can never gape.
     const outward = curve.getTangent(0).setY(0).normalize().negate();
     const throat = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.04, 14, 12), skullMat);
     throat.position.copy(p0);
     throat.scale.set(1, 0.85, 1.3);
     throat.lookAt(p0.clone().add(outward));
-    throat.castShadow = true;
     group.add(throat);
 
     hg.position.set(a.x, BODY_Y + 0.2, a.z);
@@ -424,6 +429,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
     glow.scale.set(1.35, 1.35, 1);
     glow.position.set(a.x, BODY_Y + 0.3, a.z);
     group.add(glow);
+    entry.glow = glow;
     entry.glowMat = glowMat;
 
     entries.push(entry);
@@ -454,8 +460,7 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
         e.headGroup.position.y = BODY_Y + 0.2 + (active ? Math.sin(t * 2 + e.phase) * 0.03 : 0);
         e.headGroup.rotation.z = active ? Math.sin(t * 1.4 + e.phase) * 0.07 : 0;
         // tongue dart: a quick flick out every few seconds (staggered per snake),
-        // quivering while extended — then withdrawn into the snout. Only the
-        // living, spotlighted heads taste the air; dimmed ones rest.
+        // quivering while extended — then withdrawn into the snout.
         const period = 3.4 + (e.phase % 2.1);
         const lt = (t + e.phase * 2.13) % period;
         let target = 0;
@@ -465,13 +470,8 @@ export function buildSnakes(scene: THREE.Scene): SnakeHandles {
         }
         e.tongueExt += (target - e.tongueExt) * Math.min(1, dt * 10);
         const ext = Math.max(0, e.tongueExt);
-        e.tongueG.position.z = e.tongueBaseZ - (1 - ext) * e.tongueTravel;
-        e.tongueG.rotation.y = ext * Math.sin(t * 28 + e.phase) * 0.09;
-        for (const tip of e.tongueTips) {
-          const s = tip.userData.side as number;
-          tip.position.x = s * 0.16 * e.r * (0.25 + 0.75 * ext); // fork opens as it darts
-          tip.scale.y = 0.7 + 0.5 * ext + (ext > 0.02 ? Math.sin(t * 32 + e.phase) * 0.12 * ext : 0);
-        }
+        e.tongue.position.z = e.tongueBaseZ - (1 - ext) * e.tongueTravel;
+        e.tongue.rotation.y = ext * Math.sin(t * 28 + e.phase) * 0.09;
         for (const m of e.eyeMats) m.emissiveIntensity = active ? 2.1 + Math.sin(t * 3 + e.phase) * 0.5 : 1.2;
       }
     },

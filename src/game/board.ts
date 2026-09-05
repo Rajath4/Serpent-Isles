@@ -2,7 +2,7 @@
 // Perf: 100 tile bodies are merged into ONE draw call; only the 100 printed
 // top skins stay individual (per-tile pulse glow needs its own material).
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeCompat } from './merge';
 import { BOARD_N, CELL, TOP_Y, TILE_H, SNAKES, LADDERS, cellCenter } from './constants';
 
 export interface BoardHandles {
@@ -107,54 +107,63 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     tileMeshes.set(n, top);
   }
   const baseMesh = new THREE.Mesh(
-    mergeGeometries(baseGeos, false)!,
+    mergeCompat(baseGeos),
     new THREE.MeshStandardMaterial({ color: 0x241f3d, roughness: 0.55, metalness: 0.3 }),
   );
   baseGeos.forEach((g) => g.dispose());
   baseMesh.receiveShadow = true;
   group.add(baseMesh);
 
-  // — Gold frame —
+  // — Gold frame (merged bars + merged gems: 8 draws → 2) —
   const frameMat = new THREE.MeshStandardMaterial({ color: 0xc9a24d, metalness: 0.9, roughness: 0.28 });
   const half = (BOARD_N * CELL) / 2 + 0.18;
+  const barGeos: THREE.BufferGeometry[] = [];
   const mkBar = (w: number, d: number, x: number, z: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, d), frameMat);
-    m.position.set(x, 0.1, z);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    group.add(m);
+    const b = new THREE.BoxGeometry(w, 0.3, d);
+    b.translate(x, 0.1, z);
+    barGeos.push(b);
   };
   mkBar(half * 2 + 0.6, 0.3, 0, half);
   mkBar(half * 2 + 0.6, 0.3, 0, -half);
   mkBar(0.3, half * 2, half, 0);
   mkBar(0.3, half * 2, -half, 0);
+  const frame = new THREE.Mesh(mergeCompat(barGeos), frameMat);
+  frame.castShadow = true;
+  frame.receiveShadow = true;
+  group.add(frame);
   // corner gems
   const gemMat = new THREE.MeshStandardMaterial({ color: 0x53e9ff, emissive: 0x1e90ff, emissiveIntensity: 1.6, roughness: 0.2 });
+  const gemGeos: THREE.BufferGeometry[] = [];
   [[half, half], [-half, half], [half, -half], [-half, -half]].forEach(([x, z]) => {
-    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), gemMat);
-    gem.position.set(x, 0.42, z);
-    gem.castShadow = true;
-    group.add(gem);
+    const gem = new THREE.OctahedronGeometry(0.26);
+    gem.translate(x, 0.42, z);
+    gemGeos.push(gem);
   });
+  group.add(new THREE.Mesh(mergeCompat(gemGeos), gemMat));
 
-  // — Endpoint rings: gold = ladder foot, red = snake head (slim, quiet) —
-  const ringGeo = new THREE.TorusGeometry(0.27, 0.035, 8, 36);
+  // — Endpoint rings, merged per hue (19 draws → 2) —
+  const ringProto = new THREE.TorusGeometry(0.27, 0.035, 8, 36);
   const ladderRingMat = new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xcc8a00, emissiveIntensity: 0.9, metalness: 0.7, roughness: 0.3 });
   const snakeRingMat = new THREE.MeshStandardMaterial({ color: 0xff6b81, emissive: 0xcc0033, emissiveIntensity: 0.9, metalness: 0.3, roughness: 0.4 });
+  const ladderRingGeos: THREE.BufferGeometry[] = [];
+  const snakeRingGeos: THREE.BufferGeometry[] = [];
   Object.keys(LADDERS).forEach((k) => {
     const { x, z } = cellCenter(Number(k));
-    const r = new THREE.Mesh(ringGeo, ladderRingMat);
-    r.rotation.x = Math.PI / 2;
-    r.position.set(x, TOP_Y + 0.03, z);
-    group.add(r);
+    const r = ringProto.clone();
+    r.rotateX(Math.PI / 2);
+    r.translate(x, TOP_Y + 0.03, z);
+    ladderRingGeos.push(r);
   });
   Object.keys(SNAKES).forEach((k) => {
     const { x, z } = cellCenter(Number(k));
-    const r = new THREE.Mesh(ringGeo, snakeRingMat);
-    r.rotation.x = Math.PI / 2;
-    r.position.set(x, TOP_Y + 0.03, z);
-    group.add(r);
+    const r = ringProto.clone();
+    r.rotateX(Math.PI / 2);
+    r.translate(x, TOP_Y + 0.03, z);
+    snakeRingGeos.push(r);
   });
+  ringProto.dispose();
+  group.add(new THREE.Mesh(mergeCompat(ladderRingGeos), ladderRingMat));
+  group.add(new THREE.Mesh(mergeCompat(snakeRingGeos), snakeRingMat));
 
   // — Finish beacon —
   const fin = cellCenter(100);

@@ -10,6 +10,49 @@
     />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="theme-color" content="#0b1035" />
+    <script>
+      // Boot trap: runs before the game module. Any load/eval/render error is
+      // captured and shown INSIDE the loader — the isles never hang silently.
+      (function () {
+        var errors = [];
+        window.__bootErrors = errors;
+        function render() {
+          var loader = document.getElementById('loader');
+          if (!loader || loader.classList.contains('done')) return;
+          var box = document.getElementById('loader-error');
+          if (!box) {
+            box = document.createElement('div');
+            box.id = 'loader-error';
+            box.innerHTML =
+              '<p class="err-title">The isles failed to conjure</p>' +
+              '<p class="err-msg"></p>' +
+              '<button type="button" id="loader-retry">↻ Reload the voyage</button>';
+            loader.appendChild(box);
+            box.querySelector('#loader-retry').addEventListener('click', function () {
+              location.reload();
+            });
+          }
+          var last = errors[errors.length - 1];
+          if (last) box.querySelector('.err-msg').textContent = String(last).slice(0, 220);
+          box.classList.add('show');
+        }
+        window.__showBootError = render;
+        window.addEventListener(
+          'error',
+          function (e) {
+            var msg = (e && e.message) || 'A game resource failed to load';
+            errors.push(msg);
+            render();
+          },
+          true,
+        );
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          errors.push('Unexpected error: ' + ((r && (r.message || r)) || 'unknown'));
+          render();
+        });
+      })();
+    </script>
   </head>
   <body>
     <canvas id="scene" aria-label="3D Snakes and Ladders island arena"></canvas>
