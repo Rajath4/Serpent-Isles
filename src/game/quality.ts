@@ -35,7 +35,7 @@ const PRESETS: Record<QualityTier, Omit<Quality, 'tier'>> = {
   },
   high: {
     pixelCap: 2, shadow: 2048, particleMul: 1, tubeDetail: 1,
-    antialias: true, anisotropy: 4, fancy: true, clouds: 10, fireflies: 130,
+    antialias: true, anisotropy: 8, fancy: true, clouds: 10, fireflies: 130,
   },
 };
 
@@ -44,44 +44,152 @@ export const Q: Quality = { tier: 'balanced', ...PRESETS.balanced };
 
 export function detectQuality(): QualityTier {
   try {
-    const canvas = document.createElement('canvas');
-    const gl2 = !!canvas.getContext('webgl2');
-    if (!gl2) return 'low';
-    // Software rasterizers must never carry full detail — check BEFORE the
-    // core-count fast path, or a SwiftShader desktop with 8 cores gets 'high'.
-    const gpuEarly = glRendererName().toLowerCase();
-    if (/swiftshader|llvmpipe|software|basic render|gdi generic/i.test(gpuEarly)) return 'low';
+    // One probe, one context — renderer string + capability caps together.
+    // (Old code created two contexts and judged iPhones by a core count
+    // that iOS always clamps to 4, so EVERY iPhone booted 'low'.)
+    const probe = probeGL();
+    if (!probe.webgl2) return 'low';
+    const gpu = probe.renderer.toLowerCase();
+    // Software rasterizers must never carry full detail.
+    if (/swiftshader|llvmpipe|software|basic render|gdi generic/i.test(probe.renderer)) return 'low';
+    // Museum-piece mobile GPUs: kindness is low poly.
+    if (/mali-t|mali-4|adreno \([34]|adreno [34]|powervr sgx|videocore iv/i.test(gpu)) return 'low';
+
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
     const coarse =
+      typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(pointer: coarse)').matches;
-    const cores = navigator.hardwareConcurrency ?? 4;
-    const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 0;
-    if (coarse && (cores <= 4 || (mem > 0 && mem <= 4))) return 'low';
-    if (!coarse && cores >= 8 && (mem === 0 || mem >= 8)) return 'high';
-    // fall through to GPU-string evidence below before settling on balanced
-    const gpu = gpuEarly || glRendererName().toLowerCase();
-    // museum-piece mobile GPUs: kindness is low poly
-    if (/mali-t|mali-4|adreno \([34]|adreno [34]|powervr sgx|videocore iv/i.test(gpu)) return 'low';
-    // desktop-class Apple Silicon sails cinematic (mobile Apple stays heuristic — thermals)
-    if (/mac/i.test(navigator.userAgent) && /apple (m[1-9]|a1[6-9])|apple gpu/i.test(gpu)) return 'high';
+    const cores =
+      typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
+        ? navigator.hardwareConcurrency
+        : 4;
+    const mem =
+      (typeof navigator !== 'undefined' &&
+        (navigator as unknown as { deviceMemory?: number }).deviceMemory) ||
+      0;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const maxTex = probe.maxTexture || 0;
+
+    const isiOS = /iphone|ipad|ipod/i.test(ua) || isIPadOSDesktop(ua);
+    const isAndroid = /android/i.test(ua);
+    const iosMajor = isiOS ? iosMajorVersion(ua) : 0;
+
+    // ── iOS: hardwareConcurrency is ALWAYS 4 (WebKit fingerprint clamp),
+    // so cores must never decide here. Any WebGL2 iPhone from the last ~7
+    // years sails 'high' — the fps governor still trims resolution live if
+    // thermals bite, but geometry/shaders boot at their best.
+    if (isiOS) {
+      if (iosMajor > 0 && iosMajor <= 12) return 'low'; // iPhone 6 era and older
+      if (maxTex > 0 && maxTex <= 4096) return 'balanced'; // A9/A10 era fallback
+      if (iosMajor >= 15) return 'high'; // iPhone XS/XR and newer (kept updated)
+      if (maxTex >= 8192) return 'high'; // modern Apple GPU, regardless of OS parse
+      if (dpr >= 3) return 'high'; // all Pro/Max phones ship 3x panels
+      return 'balanced'; // safe floor — modern iOS never boots 'low'
+    }
+
+    // ── Android / other touch: demand CORROBORATED weakness for 'low',
+    // and CORROBORATED strength for 'high'. A single hint is 'balanced'.
+    // Capable mids land balanced (90% of max visuals, smooth); true
+    // flagships land high. Users can still force Max in pause — it persists.
+    if (coarse || isAndroid) {
+      if (mem > 0 && mem <= 2) return 'low'; // Go-edition / ultra-budget
+      if (maxTex > 0 && maxTex <= 4096) return 'low'; // decade-old GPU
+      if (cores <= 4 && mem > 0 && mem <= 3) return 'low'; // weak cores + weak RAM together
+      // Flagship GPUs only — not every Mali-G / Adreno. Mid-range 610–639,
+      // G31/G51/G52/G57 stay balanced even with 8 cores (fill-rate bound).
+      const flagshipGPU =
+        /adreno\s*(6[4-9]\d|7\d\d|8\d\d)|adreno\s*\(.*(6[4-9]|7\d|8\d)|mali-g(6[189]|7\d|9\d)|immortalis|xclipse/i.test(
+          gpu,
+        );
+      const hasMobileGPU = /adreno|mali|powervr|videocore|xclipse|immortalis/i.test(gpu);
+      if (flagshipGPU && (cores >= 6 || mem >= 4 || maxTex >= 8192)) return 'high';
+      // GPU masked (privacy browsers, WebView): trust strong specs alone.
+      if (!hasMobileGPU) {
+        if (cores >= 8 && mem >= 6 && maxTex >= 8192) return 'high';
+        if (cores >= 8 && mem >= 8) return 'high';
+      }
+      return 'balanced';
+    }
+
+    // ── Desktop: optimistic by default. 'low' only for proven weaklings.
+    if (/mac/i.test(ua) && /apple (m[1-9]|a1[6-9])|apple gpu/i.test(gpu)) return 'high';
+    if (/rtx|radeon rx|rx [567]|gtx 1[067]|gtx 2|arc a|radeon pro|apple m[1-9]/i.test(gpu)) return 'high';
+    if (cores >= 8 && (mem === 0 || mem >= 8)) return 'high';
+    if (cores >= 6 && (mem === 0 || mem >= 8) && maxTex >= 8192) return 'high';
+    if (cores <= 2 && mem > 0 && mem <= 4) return 'low'; // genuine museum desktop
     return 'balanced';
   } catch {
     return 'balanced';
   }
 }
 
-/** Read the real GPU string, then release the probe context immediately. */
-function glRendererName(): string {
+interface GLProbe {
+  webgl2: boolean;
+  renderer: string;
+  maxTexture: number;
+}
+
+/** Single probe context: WebGL2 flag + GPU string + texture cap, then release. */
+function probeGL(): GLProbe {
+  const out: GLProbe = { webgl2: false, renderer: '', maxTexture: 0 };
   try {
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    if (!gl) return '';
-    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return name;
+    // Try WebGL2 first — a non-null context IS the flag (no instanceof needed).
+    const gl2 = canvas.getContext('webgl2') as WebGL2RenderingContext | null;
+    const gl = (gl2 ||
+      canvas.getContext('webgl')) as WebGLRenderingContext | WebGL2RenderingContext | null;
+    if (!gl) return out;
+    out.webgl2 = gl2 !== null;
+    try {
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      out.renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    } catch {
+      /* masked (iOS Safari) — caps below still guide us */
+    }
+    try {
+      out.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    } catch {
+      /* ignore */
+    }
+    try {
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch {
+      /* ignore */
+    }
   } catch {
-    return '';
+    /* ignore — caller falls back to balanced */
+  }
+  return out;
+}
+
+/** iPadOS 13+ reports as desktop "Macintosh" — touch points give it away. */
+function isIPadOSDesktop(ua: string): boolean {
+  try {
+    return (
+      /macintosh/i.test(ua) &&
+      typeof navigator !== 'undefined' &&
+      (navigator as unknown as { maxTouchPoints?: number }).maxTouchPoints !== undefined &&
+      ((navigator as unknown as { maxTouchPoints: number }).maxTouchPoints > 2)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** "CPU iPhone OS 17_4 like Mac OS X" → 17. 0 when unparseable (unknown → optimistic). */
+function iosMajorVersion(ua: string): number {
+  try {
+    // iPadOS 13+ masquerades as "Macintosh … Mac OS X 10_15" — its OS token
+    // is frozen at 10, so judge it by the Safari Version/xx instead.
+    if (isIPadOSDesktop(ua)) {
+      const v = ua.match(/Version\/(\d+)\./);
+      return v ? parseInt(v[1], 10) || 0 : 0;
+    }
+    const m = ua.match(/OS (\d+)[_.]/i);
+    return m ? parseInt(m[1], 10) || 0 : 0;
+  } catch {
+    return 0;
   }
 }
 
