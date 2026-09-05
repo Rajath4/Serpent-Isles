@@ -378,6 +378,17 @@ export class Game {
     this.camTween = { t: 0, dur, p0: this.camera.position.clone(), p1: pos.clone(), t0: this.controls.target.clone(), t1: tgt.clone() };
   }
 
+  /**
+   * Resolve once the camera has (nearly) arrived — `lead` seconds early so an
+   * action's anticipation beat can play out exactly as the lens locks.
+   * Resolves instantly when the camera is already framed: never dead air.
+   */
+  private async waitForCamera(lead = 0): Promise<void> {
+    while (this.camTween && this.camTween.dur - this.camTween.t > lead) {
+      await new Promise((r) => setTimeout(r, 30));
+    }
+  }
+
   /** Spotlight the route(s) touching a square; everything else falls back. */
   private applyHoverFocus(sq: number | null) {
     let snakeHead: number | null = null;
@@ -436,8 +447,13 @@ export class Game {
 
     const value = 1 + Math.floor(Math.random() * 6);
     player.rolls++;
-    // director: cut to the dice close-up for the throw
-    if (this.director) this.frameDice();
+    if (this.director) {
+      // director: glide to the dice, and HOLD the throw until the lens is
+      // nearly locked — the 0.3s shiver then lands exactly on arrival,
+      // the launch the instant the frame settles. Already framed? No wait at all.
+      this.frameDice();
+      await this.waitForCamera(0.3);
+    }
     await this.dice.roll(value);
     this.cb.onDice(value, player);
     this.board.pulse(Math.max(1, player.square));
@@ -642,11 +658,15 @@ export class Game {
       1.8,
     );
     const at = new THREE.Vector3(obj.position.x, TOP_Y + 0.5, obj.position.z);
-    this.fx.crownFountain(at);
     this.board.pulse(100, 0xffe1a1);
-    if (!REDUCED_MOTION) {
-      setTimeout(() => this.fx.crownFountain(at), 700);
-      setTimeout(() => this.fx.crownFountain(at), 1500);
+    // scored to the 1.8s swoop: first fountain mid-dive (seen growing as the
+    // lens drops in), second on lock, third behind the win panel's arrival.
+    if (REDUCED_MOTION) {
+      setTimeout(() => this.fx.crownFountain(at), 500);
+    } else {
+      setTimeout(() => this.fx.crownFountain(at), 500);
+      setTimeout(() => this.fx.crownFountain(at), 1800);
+      setTimeout(() => this.fx.crownFountain(at), 2700);
     }
   }
 }
