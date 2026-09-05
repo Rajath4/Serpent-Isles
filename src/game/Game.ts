@@ -89,6 +89,11 @@ export class Game {
   private trackOff = new THREE.Vector3(2.6, 3.8, 4.2);
   private lastInteract = -1000;
   private timeScale = 1;
+  // — silent performance governor: frame counter, shadow stride, adaptive res —
+  private frame = 0;
+  private perfAcc = 0;
+  private perfN = 0;
+  private perfTier = 0; // 0: full · 1: balanced · 2: swift
   private sound: SoundBank;
   private cb: Callbacks;
 
@@ -104,10 +109,14 @@ export class Game {
   constructor(private canvas: HTMLCanvasElement, sound: SoundBank, cb: Callbacks) {
     this.sound = sound;
     this.cb = cb;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer = new THREE.WebGLRenderer({
+      canvas, antialias: true, powerPreference: 'high-performance', stencil: false,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // shadows re-render every 2nd frame — a 16ms lag no eye can catch, ~half the cost
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
 
@@ -214,6 +223,9 @@ export class Game {
     const loop = () => {
       requestAnimationFrame(loop);
       const rawDt = Math.min(clock.getDelta(), 0.05);
+      this.frame++;
+      if ((this.frame & 1) === 0) this.renderer.shadowMap.needsUpdate = true;
+      this.autoPerf(rawDt);
       // impact slow-mo eases back to full speed — tweens, dice, particles and
       // camera all breathe together, so the world never tears
       this.timeScale += (1 - this.timeScale) * Math.min(1, rawDt * 4.5);
@@ -282,8 +294,8 @@ export class Game {
       } else {
         this.marker.visible = false;
       }
-      // hover inspector
-      if (this.pointerOnBoard && !this.dragging && this.tiles.length) {
+      // hover inspector (every 2nd frame — 30Hz is plenty for a tooltip)
+      if ((this.frame & 1) === 0 && this.pointerOnBoard && !this.dragging && this.tiles.length) {
         this.raycaster.setFromCamera(this.pointerNdc, this.camera);
         const hits = this.raycaster.intersectObjects(this.tiles, false);
         const sq = hits.length ? (hits[0].object.userData.square as number) : null;
@@ -297,7 +309,8 @@ export class Game {
       }
       this.controls.update();
       // foliage can never block the lens — ghost whatever stands in the way
-      this.env.fadeOccluders(this.camera.position, this.controls.target);
+      // (offset stride from the hover raycast so both never fire together)
+      if ((this.frame & 1) === 1) this.env.fadeOccluders(this.camera.position, this.controls.target);
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -309,6 +322,26 @@ export class Game {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Silent governor: samples real frame time every ~2s and steps render
+   * resolution down/up a tier. Nobody is ever told — the game just stays fluid.
+   */
+  private autoPerf(rawDt: number) {
+    this.perfAcc += rawDt;
+    this.perfN++;
+    if (this.perfN < 120) return;
+    const avg = this.perfAcc / this.perfN;
+    this.perfAcc = 0;
+    this.perfN = 0;
+    if (avg > 1 / 42 && this.perfTier < 2) this.perfTier++;
+    else if (avg < 1 / 57 && this.perfTier > 0) this.perfTier--;
+    else return;
+    const dpr = window.devicePixelRatio || 1;
+    this.renderer.setPixelRatio(
+      this.perfTier === 0 ? Math.min(dpr, 2) : this.perfTier === 1 ? Math.min(dpr, 1.5) : 1,
+    );
   }
 
   // ── setup ────────────────────────────────────────────────────────────────

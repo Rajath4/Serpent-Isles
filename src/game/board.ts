@@ -1,5 +1,8 @@
 // ── Premium 3D board: tiles, numbers, gold frame, endpoint markers ──────────
+// Perf: 100 tile bodies are merged into ONE draw call; only the 100 printed
+// top skins stay individual (per-tile pulse glow needs its own material).
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOARD_N, CELL, TOP_Y, TILE_H, SNAKES, LADDERS, cellCenter } from './constants';
 
 export interface BoardHandles {
@@ -65,13 +68,12 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
   const tileMeshes = new Map<number, THREE.Mesh>();
   const pulseState = new Map<number, { t: number; color: THREE.Color }>();
 
-  const sideMat = new THREE.MeshStandardMaterial({ color: 0x241f3d, roughness: 0.55, metalness: 0.3 });
-
   const snakeHeads = new Set(Object.keys(SNAKES).map(Number));
-  const snakeTails = new Set(Object.values(SNAKES));
   const ladderFeet = new Set(Object.keys(LADDERS).map(Number));
-  const ladderTops = new Set(Object.values(LADDERS));
 
+  // — merged tile bodies: one geometry, one material, one draw call —
+  const baseGeos: THREE.BufferGeometry[] = [];
+  const topGeo = new THREE.PlaneGeometry(CELL * 0.96, CELL * 0.96);
   for (let n = 1; n <= 100; n++) {
     const idx = n - 1;
     const row = Math.floor(idx / BOARD_N);
@@ -80,8 +82,10 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
     const { x, z } = cellCenter(n);
     const special =
       n === 1 ? 'start' : n === 100 ? 'finish' : snakeHeads.has(n) ? 'snake' : ladderFeet.has(n) ? 'ladder' : null;
-    void snakeTails;
-    void ladderTops;
+
+    const base = new THREE.BoxGeometry(CELL * 0.96, TILE_H, CELL * 0.96);
+    base.translate(x, TILE_H / 2, z);
+    baseGeos.push(base);
 
     const topMat = new THREE.MeshStandardMaterial({
       map: numberTexture(n, dark, special),
@@ -94,15 +98,21 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
       topMat.emissive = new THREE.Color(0x553a00);
       topMat.emissiveIntensity = 0.45;
     }
-    const mats = [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
-    const tile = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.96, TILE_H, CELL * 0.96), mats);
-    tile.position.set(x, TILE_H / 2, z);
-    tile.receiveShadow = true;
-    tile.castShadow = false;
-    tile.userData.square = n;
-    group.add(tile);
-    tileMeshes.set(n, tile);
+    const top = new THREE.Mesh(topGeo, topMat);
+    top.rotation.x = -Math.PI / 2;
+    top.position.set(x, TOP_Y + 0.0015, z);
+    top.receiveShadow = true;
+    top.userData.square = n;
+    group.add(top);
+    tileMeshes.set(n, top);
   }
+  const baseMesh = new THREE.Mesh(
+    mergeGeometries(baseGeos, false)!,
+    new THREE.MeshStandardMaterial({ color: 0x241f3d, roughness: 0.55, metalness: 0.3 }),
+  );
+  baseGeos.forEach((g) => g.dispose());
+  baseMesh.receiveShadow = true;
+  group.add(baseMesh);
 
   // — Gold frame —
   const frameMat = new THREE.MeshStandardMaterial({ color: 0xc9a24d, metalness: 0.9, roughness: 0.28 });
@@ -184,8 +194,7 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
         s.t += dt;
         const mesh = tileMeshes.get(n);
         if (!mesh) return;
-        const mats = mesh.material as THREE.Material[];
-        const top = mats[2] as THREE.MeshStandardMaterial;
+        const top = mesh.material as THREE.MeshStandardMaterial;
         const k = Math.max(0, 1 - s.t / 1.6);
         top.emissive.copy(s.color).multiplyScalar(k * 0.9);
         if (k <= 0) {
