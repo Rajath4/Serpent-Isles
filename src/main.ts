@@ -212,9 +212,19 @@ function confettiTick() {
   }
 }
 
-// ── toasts + log ───────────────────────────────────────────────────────────
-function toast(msg: string, ms = 2400) {
-  const el = document.createElement('div');
+// ── toasts + log + screen washes ───────────────────────────────────────────
+/** Full-screen event wash (damage red, victory gold). Reduced-motion safe. */
+function screenWash(id: 'dmg-flash' | 'win-flash', holdMs: number) {
+  if (REDUCED) return;
+  const el = $(id);
+  el.classList.remove('hidden', 'show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  window.clearTimeout((el as unknown as { _t?: number })._t);
+  (el as unknown as { _t?: number })._t = window.setTimeout(() => el.classList.add('hidden'), holdMs);
+}
+
+function toast(msg: string, ms = 2400) {  const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = msg;
   $('toasts').appendChild(el);
@@ -303,8 +313,10 @@ const game = new Game(canvas, sound, {
   onLog: (msg, kind) => {
     log(msg, kind);
     if (kind === 'good' || kind === 'bad') announce(msg);
-    if (kind === 'bad') buzz(60);
-    else if (kind === 'good') buzz(35);
+    if (kind === 'bad') {
+      buzz(60);
+      screenWash('dmg-flash', 600); // the bite lands on screen, not just in the feed
+    } else if (kind === 'good') buzz(35);
   },
   onWin: (winner, stats) => {
     clearCpuTimer();
@@ -333,6 +345,7 @@ const game = new Game(canvas, sound, {
     setTimeout(() => {
       $('win').classList.remove('hidden');
       $('btn-rematch').focus({ preventScroll: true });
+      screenWash('win-flash', 1700); // gold swells behind the coronation panel
       if (!REDUCED) {
         burstConfetti(260);
         setTimeout(() => burstConfetti(160), 900);

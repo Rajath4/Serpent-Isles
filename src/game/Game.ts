@@ -223,6 +223,7 @@ export class Game {
     });
     canvas.addEventListener('pointerleave', () => {
       this.pointerOnBoard = false;
+      this.canvas.style.cursor = '';
       if (this.hovered !== null) {
         this.hovered = null;
         this.cb.onHover(null);
@@ -231,6 +232,7 @@ export class Game {
     canvas.addEventListener('pointerdown', () => {
       this.dragging = true;
       this.lastInteract = this.elapsed;
+      this.canvas.style.cursor = 'grabbing';
       if (this.hovered !== null) {
         this.hovered = null;
         this.cb.onHover(null);
@@ -243,6 +245,7 @@ export class Game {
     }, { passive: true });
     window.addEventListener('pointerup', () => {
       this.dragging = false;
+      this.canvas.style.cursor = '';
     });
 
     this.resize();
@@ -352,6 +355,7 @@ export class Game {
         const sq = hits.length ? (hits[0].object.userData.square as number) : null;
         if (sq !== this.hovered) {
           this.hovered = sq;
+          this.canvas.style.cursor = sq !== null ? 'pointer' : '';
           this.applyHoverFocus(sq);
           this.cb.onHover(sq, this.pointerClient.x, this.pointerClient.y);
         } else if (sq !== null) {
@@ -678,6 +682,8 @@ export class Game {
     this.gen++;
     this.busy = false;
     this.trackFn = null;
+    // a hop frozen mid-squash must not haunt the next match
+    this.tokens.objects.forEach((o) => o.scale.set(1, 1, 1));
     this.dice.cancel();
   }
 
@@ -859,6 +865,14 @@ export class Game {
       await this.tween(0.24, (e) => {
         obj.position.lerpVectors(src, dest, e);
         obj.position.y = THREE.MathUtils.lerp(src.y, dest.y, e) + Math.sin(e * Math.PI) * 0.55;
+        // squash & stretch: crouch on takeoff, elongate mid-leap, absorb on landing.
+        // all phases resolve to exactly 1 — the token never rests deformed.
+        const crouch = e < 0.2 ? Math.sin((e / 0.2) * Math.PI) * 0.5 : 0;
+        const air = Math.sin(Math.min(1, Math.max(0, (e - 0.15) / 0.7)) * Math.PI);
+        const land = e > 0.8 ? Math.sin(((e - 0.8) / 0.2) * Math.PI) : 0;
+        const sx = 1 + 0.1 * crouch - 0.14 * air + 0.16 * land;
+        const sy = 1 - 0.12 * crouch + 0.2 * air - 0.2 * land;
+        obj.scale.set(sx, sy, sx);
       });
       obj.position.copy(dest);
       this.fx.dust(dest);
@@ -940,6 +954,8 @@ export class Game {
     const obj = this.tokens.objects.get(winner.def.id);
     if (!obj) return;
     this.trackFn = null;
+    // coronation slow-mo — the loop breathes back to full speed on its own
+    if (!REDUCED_MOTION) this.timeScale = 0.45;
     this.flyTo(
       new THREE.Vector3(obj.position.x + 2.8, 3.6, obj.position.z + 4.4),
       new THREE.Vector3(obj.position.x, 1.0, obj.position.z),

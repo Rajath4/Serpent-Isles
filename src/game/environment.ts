@@ -264,6 +264,33 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
   scene.add(poles);
   scene.add(bowls);
 
+  // — brazier embers: one Points system, 60 rising sparks. Eco skips it —
+  // the flames carry the moment there, and every draw call is sacred on weak GPUs.
+  const EMBERS = 60;
+  let emberGeo: THREE.BufferGeometry | null = null;
+  const emberVel = new Float32Array(EMBERS);
+  if (Q.tier !== 'low') {
+    emberGeo = new THREE.BufferGeometry();
+    const emberPos = new Float32Array(EMBERS * 3);
+    for (let k = 0; k < EMBERS; k++) {
+      const c = corners[k % corners.length];
+      emberPos[k * 3] = c[0] + (Math.random() - 0.5) * 0.3;
+      emberPos[k * 3 + 1] = 1.6 + Math.random() * 2.5;
+      emberPos[k * 3 + 2] = c[1] + (Math.random() - 0.5) * 0.3;
+      emberVel[k] = 0.5 + Math.random() * 0.8;
+    }
+    emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
+    const embers = new THREE.Points(
+      emberGeo,
+      new THREE.PointsMaterial({
+        color: 0xffb14e, size: 0.12, transparent: true, opacity: 0.9,
+        blending: THREE.AdditiveBlending, depthWrite: false, map: makeGlowTexture(),
+      }),
+    );
+    embers.frustumCulled = false;
+    scene.add(embers);
+  }
+
   // — Fireflies —
   const fireflyCount = Q.fireflies;
   const fGeo = new THREE.BufferGeometry();
@@ -334,6 +361,22 @@ export function buildEnvironment(scene: THREE.Scene): EnvHandles {
         const s = 1 + Math.sin(t * 11 + i * 2.4) * 0.12 + Math.sin(t * 23 + i) * 0.06;
         f.scale.set(1.05 * s, 1.4 * (2 - s) * s * 0.5 + 0.7, 1);
       });
+      // embers rise, wobble, and recycle above the braziers
+      if (emberGeo) {
+        const p = emberGeo.attributes.position as THREE.BufferAttribute;
+        for (let k = 0; k < EMBERS; k++) {
+          let y = p.getY(k) + emberVel[k] * dt;
+          if (y > 4.6) {
+            const c = corners[k % corners.length];
+            y = 1.7;
+            p.setX(k, c[0] + (Math.random() - 0.5) * 0.3);
+            p.setZ(k, c[1] + (Math.random() - 0.5) * 0.3);
+          }
+          p.setY(k, y);
+          p.setX(k, p.getX(k) + Math.sin(t * 3 + k * 2.1) * dt * 0.3);
+        }
+        p.needsUpdate = true;
+      }
       // fireflies drift
       const p = fGeo.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < fireflyCount; i++) {

@@ -384,6 +384,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outl
   100% { opacity: 0; transform: scale(1.06) translateY(-18px); }
 }
 
+/* Full-screen event washes — serpent bites sting red, crowns swell gold */
+#dmg-flash, #win-flash {
+  position: fixed; inset: 0; z-index: 33; pointer-events: none; opacity: 0;
+}
+#dmg-flash { background: radial-gradient(ellipse at center, transparent 55%, rgba(255,30,60,0.32) 100%); }
+#win-flash { background: radial-gradient(ellipse at center, transparent 45%, rgba(255,215,110,0.4) 100%); }
+#dmg-flash.show { animation: dmgpulse 0.55s ease-out forwards; }
+#win-flash.show { animation: winswell 1.6s ease-out forwards; }
+@keyframes dmgpulse { 0% { opacity: 0; } 18% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes winswell { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
+
 /* Hover inspector chip */
 #hover-chip {
   position: fixed; z-index: 30; pointer-events: none;

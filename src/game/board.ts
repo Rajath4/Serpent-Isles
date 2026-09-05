@@ -191,9 +191,10 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
   );
   beacon.position.set(fin.x, TOP_Y + 1.6, fin.z);
   group.add(beacon);
+  const crownMat = new THREE.MeshStandardMaterial({ color: 0xffd76e, metalness: 1, roughness: 0.25, emissive: 0x7a4d00, emissiveIntensity: 0.6 });
   const crown = new THREE.Mesh(
     new THREE.TorusKnotGeometry(0.22, 0.07, 64, 12),
-    new THREE.MeshStandardMaterial({ color: 0xffd76e, metalness: 1, roughness: 0.25, emissive: 0x7a4d00, emissiveIntensity: 0.6 }),
+    crownMat,
   );
   crown.position.set(fin.x, TOP_Y + 0.55, fin.z);
   crown.castShadow = true;
@@ -244,6 +245,8 @@ export function buildBoard(scene: THREE.Scene): BoardHandles {
       beacon.rotation.y += dt * 0.8;
       crown.rotation.y += dt * 1.2;
       crown.position.y = TOP_Y + 0.55 + Math.sin(t * 2) * 0.06;
+      // the crown breathes light — the reason eyes drift to square 100
+      crownMat.emissiveIntensity = 0.5 + (Math.sin(t * 2.4) * 0.5 + 0.5) * 0.5;
       if (goalBeacon.visible) {
         goalBeacon.rotation.y += dt;
         goalRing.rotation.z += dt * 0.6;

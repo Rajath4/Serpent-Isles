@@ -132,9 +132,12 @@ export function buildDice(
   pad.castShadow = true;
   freeze(pad);
   scene.add(pad);
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0xd9a441, metalness: 0.9, roughness: 0.3, emissive: 0xcc8a00, emissiveIntensity: 0.25,
+  });
   const padTrim = new THREE.Mesh(
     new THREE.TorusGeometry(1.55, 0.06, 10, 48),
-    new THREE.MeshStandardMaterial({ color: 0xd9a441, metalness: 0.9, roughness: 0.3 }),
+    trimMat,
   );
   padTrim.rotation.x = Math.PI / 2;
   padTrim.position.set(PAD_X, 0.24, PAD_Z);
@@ -278,6 +281,7 @@ export function buildDice(
           mesh.rotation.y += dt * 0.4;
         }
         spot.intensity += (SPOT_BASE - spot.intensity) * Math.min(1, dt * 3);
+        trimMat.emissiveIntensity += (0.25 - trimMat.emissiveIntensity) * Math.min(1, dt * 3);
       } else {
         const A = anim!;
         A.t += dt;
@@ -293,6 +297,7 @@ export function buildDice(
         const s = 1 + Math.sin(k * Math.PI) * 0.07;
         mesh.scale.set(s, 2 - s > 0 ? 2 - s : 1, s);
         spot.intensity = SPOT_BASE * (1 + k * 0.8); // the lamp swells with the charge
+        trimMat.emissiveIntensity = 0.25 + k * 1.2; // the gold ring charges too
         tmpQ.setFromEuler(tmpE.set(Math.sin(A.t * 60) * 0.05 * k, 0, Math.cos(A.t * 55) * 0.05 * k));
         setQuat(A.qBase.clone().multiply(tmpQ));
         if (k >= 1) {
@@ -316,6 +321,7 @@ export function buildDice(
         const stretch = 1 + Math.sin(k * Math.PI) * 0.1;
         mesh.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
         spot.intensity = SPOT_BASE * 2.2;
+        trimMat.emissiveIntensity = 1.6;
         onTrail?.(mesh.position);
         if (k >= 1) {
           A.phase = 'slam';
@@ -330,6 +336,7 @@ export function buildDice(
         A.q.multiply(tmpQ);
         setQuat(A.q);
         spot.intensity = SPOT_BASE * 1.8;
+        trimMat.emissiveIntensity = 1.0;
         onTrail?.(mesh.position);
         if (k >= 1) {
           mesh.position.copy(A.land);
@@ -351,6 +358,7 @@ export function buildDice(
         const e = easeOut(k);
         mesh.scale.set(1.3 - 0.3 * e, 0.62 + 0.38 * e, 1.3 - 0.3 * e);
         spot.intensity = SPOT_BASE * (1 + 0.3 * (1 - k));
+        trimMat.emissiveIntensity = 0.25 + 0.5 * (1 - k);
         // tumble resolves into the true face while a dying wobble plays out
         mesh.quaternion.slerpQuaternions(A.q, A.qTarget, easeInOut(k));
         tmpQ.setFromAxisAngle(A.wobbleAxis, (1 - k) * 0.9 * Math.sin(k * Math.PI * 3));
@@ -371,6 +379,7 @@ export function buildDice(
         const k = Math.min(1, A.t / D_SETTLE);
         setQuat(A.qTarget);
         spot.intensity = SPOT_BASE;
+        trimMat.emissiveIntensity = 0.25;
         const pop = Math.sin(k * Math.PI);
         mesh.scale.set(1 - 0.07 * pop, 1 + 0.14 * pop, 1 - 0.07 * pop);
         if (k >= 1) {
